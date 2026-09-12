@@ -469,48 +469,68 @@ export default function AccountsList() {
     }
   };
 
+  const accountCounts = useMemo(() => {
+    const counts = { all: accounts.length, cash: 0, bank: 0, cooperative: 0, digital: 0, other: 0 };
+    accounts.forEach(a => {
+      if (a.status === 'inactive') return;
+      if (a.type === 'cash') counts.cash++;
+      else if (a.type === 'bank') counts.bank++;
+      else if (a.type === 'cooperative') counts.cooperative++;
+      else if (a.type === 'digital' || a.type === 'card') counts.digital++;
+      else counts.other++;
+    });
+    return counts;
+  }, [accounts]);
+
   return (
-    <div className="p-4 md:p-6 space-y-6 max-w-6xl mx-auto pb-28 md:pb-12">
+    <div className="p-3.5 sm:p-5 md:p-6 space-y-5 max-w-6xl mx-auto pb-28 md:pb-12 animate-in fade-in duration-200">
       {/* ── 1. Page Header ───────────────────────────────────── */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3.5 bg-card/60 backdrop-blur-md p-4 sm:p-5 rounded-2xl border border-border/70 shadow-xs">
         <div className="flex items-center gap-3">
-          <div className="p-2.5 rounded-2xl bg-primary/10 text-primary">
-            <Building2 className="size-6" />
+          <div className="p-3 rounded-2xl bg-primary/10 text-primary border border-primary/20 shadow-xs">
+            <Building2 className="size-6 sm:size-7" />
           </div>
           <div>
-            <h1 className="text-xl md:text-2xl font-bold tracking-tight">Accounts & Banking</h1>
-            <p className="text-xs md:text-sm text-muted-foreground">
-              Manage Cash Drawers, Banks, Cooperatives (Sahakari), Wallets & Internal Transfers
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl sm:text-2xl font-bold tracking-tight text-foreground">
+                Accounts & Banking
+              </h1>
+              <Badge variant="outline" className="hidden sm:inline-flex text-[10px] bg-primary/5 text-primary border-primary/20">
+                Finance Hub
+              </Badge>
+            </div>
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+              Cash drawers, commercial banks, Sahakari & instant transfers
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 w-full sm:w-auto">
           <Button
             variant="outline"
             size="sm"
             onClick={() => handleOpenTransfer()}
-            className="h-9 gap-1.5 text-xs rounded-xl font-medium"
+            className="flex-1 sm:flex-none h-10 gap-1.5 text-xs rounded-xl font-semibold border-primary/30 hover:bg-primary/5 active:scale-95 transition-all"
           >
-            <ArrowRightLeft className="size-3.5" />
+            <ArrowRightLeft className="size-4 text-primary" />
             Transfer Funds
           </Button>
 
           <Button
             size="sm"
             onClick={handleOpenCreateAccount}
-            className="h-9 gap-1.5 text-xs rounded-xl font-medium shadow-sm"
+            className="flex-1 sm:flex-none h-10 gap-1.5 text-xs rounded-xl font-semibold shadow-sm active:scale-95 transition-all"
           >
             <Plus className="size-4" />
-            Add Account / Bank
+            Add Account
           </Button>
 
           <Button
-            variant="outline"
+            variant="ghost"
             size="icon"
             onClick={() => void loadData(true)}
             disabled={refreshing}
-            className="h-9 w-9 rounded-xl"
+            className="h-10 w-10 rounded-xl shrink-0 text-muted-foreground hover:text-foreground"
             aria-label="Refresh"
             title="Refresh"
           >
@@ -519,103 +539,127 @@ export default function AccountsList() {
         </div>
       </div>
 
-      {/* ── 2. Liquid Assets Summary Metrics ─────────────────── */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-        <Card className="bg-gradient-to-br from-emerald-500/10 via-card to-card border-emerald-500/20 col-span-2 sm:col-span-1">
-          <CardContent className="p-4">
+      {/* ── 2. Liquid Assets Summary Metrics (High-End Card Grid) ─ */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
+        {/* Total Liquid Funds - Hero Card */}
+        <Card className="col-span-2 sm:col-span-2 lg:col-span-1 relative overflow-hidden bg-gradient-to-br from-emerald-600/15 via-emerald-500/5 to-card border-emerald-500/30 shadow-xs">
+          <div className="absolute -right-3 -top-3 w-20 h-20 rounded-full bg-emerald-500/10 blur-xl pointer-events-none" />
+          <CardContent className="p-4 sm:p-4.5 space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Total Liquid Funds</span>
-              <DollarSign className="size-4 text-emerald-600" />
+              <span className="text-[11px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider">
+                Total Liquid Funds
+              </span>
+              <div className="p-1.5 rounded-lg bg-emerald-500/20 text-emerald-700 dark:text-emerald-300">
+                <DollarSign className="size-4" />
+              </div>
             </div>
-            <p className="text-xl md:text-2xl font-bold text-emerald-600 dark:text-emerald-400 mt-1.5">
+            <p className="text-2xl sm:text-3xl font-extrabold tracking-tight text-emerald-700 dark:text-emerald-300 pt-0.5">
               {format(summaryTotals.totalLiquid)}
             </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Cash + Banks + Sahakari
+            <p className="text-[11px] text-muted-foreground pt-0.5">
+              Ready cash + active bank deposits
             </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-card shadow-xs">
-          <CardContent className="p-4">
+        {/* Cash in Hand */}
+        <Card className="bg-card border-border/70 shadow-xs hover:border-primary/40 transition-colors">
+          <CardContent className="p-4 space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Cash in Hand</span>
-              <Wallet className="size-4 text-primary" />
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Cash in Hand</span>
+              <div className="p-1.5 rounded-lg bg-primary/10 text-primary">
+                <Wallet className="size-3.5" />
+              </div>
             </div>
-            <p className="text-lg md:text-xl font-bold text-foreground mt-1">
+            <p className="text-xl sm:text-2xl font-bold text-foreground">
               {format(summaryTotals.totalCash)}
             </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Counter & drawer cash
+            <p className="text-[10px] text-muted-foreground">
+              Counter drawer & petty cash
             </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-card shadow-xs">
-          <CardContent className="p-4">
+        {/* Bank Accounts */}
+        <Card className="bg-card border-border/70 shadow-xs hover:border-blue-500/40 transition-colors">
+          <CardContent className="p-4 space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Bank Accounts</span>
-              <Landmark className="size-4 text-blue-600" />
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Bank Accounts</span>
+              <div className="p-1.5 rounded-lg bg-blue-500/10 text-blue-600 dark:text-blue-400">
+                <Landmark className="size-3.5" />
+              </div>
             </div>
-            <p className="text-lg md:text-xl font-bold text-foreground mt-1">
+            <p className="text-xl sm:text-2xl font-bold text-foreground">
               {format(summaryTotals.totalBank)}
             </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
+            <p className="text-[10px] text-muted-foreground">
               Commercial bank balances
             </p>
           </CardContent>
         </Card>
 
-        <Card className="bg-card shadow-xs">
-          <CardContent className="p-4">
+        {/* Sahakari / Cooperatives */}
+        <Card className="bg-card border-border/70 shadow-xs hover:border-amber-500/40 transition-colors col-span-2 sm:col-span-1">
+          <CardContent className="p-4 space-y-1">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-medium text-muted-foreground">Sahakari</span>
-              <PiggyBank className="size-4 text-amber-600" />
+              <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Sahakari</span>
+              <div className="p-1.5 rounded-lg bg-amber-500/10 text-amber-600 dark:text-amber-400">
+                <PiggyBank className="size-3.5" />
+              </div>
             </div>
-            <p className="text-lg md:text-xl font-bold text-foreground mt-1">
+            <p className="text-xl sm:text-2xl font-bold text-foreground">
               {format(summaryTotals.totalCooperative)}
             </p>
-            <p className="text-[11px] text-muted-foreground mt-0.5">
-              Cooperative savings & deposits
+            <p className="text-[10px] text-muted-foreground">
+              Savings & cooperative shares
             </p>
           </CardContent>
         </Card>
       </div>
 
       {/* ── 3. Filter Tabs & Search Bar ──────────────────────── */}
-      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
-        {/* Tab Pills */}
+      <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3 pt-1">
+        {/* Modern Tab Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 sm:pb-0 scrollbar-none">
           {[
-            { id: 'all', label: 'All Accounts' },
-            { id: 'cash', label: 'Cash' },
-            { id: 'bank', label: 'Banks' },
-            { id: 'cooperative', label: 'Sahakari' },
-            { id: 'digital', label: 'Digital Wallets' },
-            { id: 'other', label: 'Receivables / Payables' },
+            { id: 'all', label: 'All', count: accountCounts.all },
+            { id: 'cash', label: 'Cash', count: accountCounts.cash },
+            { id: 'bank', label: 'Banks', count: accountCounts.bank },
+            { id: 'cooperative', label: 'Sahakari', count: accountCounts.cooperative },
+            { id: 'digital', label: 'Wallets', count: accountCounts.digital },
+            { id: 'other', label: 'Ledgers', count: accountCounts.other },
           ].map(tab => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id as TabFilter)}
-              className={`px-3 py-1.5 text-xs font-medium rounded-xl whitespace-nowrap transition-colors ${
+              className={`inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl whitespace-nowrap transition-all active:scale-95 ${
                 activeTab === tab.id
-                  ? 'bg-primary text-primary-foreground shadow-sm'
-                  : 'bg-muted/60 text-muted-foreground hover:bg-muted'
+                  ? 'bg-primary text-primary-foreground shadow-xs'
+                  : 'bg-card border border-border/60 text-muted-foreground hover:text-foreground hover:bg-muted/50'
               }`}
             >
-              {tab.label}
+              <span>{tab.label}</span>
+              <span
+                className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                  activeTab === tab.id
+                    ? 'bg-primary-foreground/20 text-primary-foreground'
+                    : 'bg-muted text-muted-foreground'
+                }`}
+              >
+                {tab.count}
+              </span>
             </button>
           ))}
         </div>
 
         {/* Search */}
         <div className="relative w-full sm:w-64">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
+          <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 size-4 text-muted-foreground" />
           <Input
             value={searchTerm}
             onChange={e => setSearchTerm(e.target.value)}
-            placeholder="Search accounts..."
-            className="pl-9 pr-8 h-9 text-xs rounded-xl"
+            placeholder="Search account name, number..."
+            className="pl-9 pr-8 h-10 text-xs rounded-xl bg-card border-border/70"
           />
           {searchTerm && (
             <button
@@ -630,156 +674,162 @@ export default function AccountsList() {
 
       {/* ── 4. Accounts Grid ─────────────────────────────────── */}
       {loading ? (
-        <div className="py-16 text-center space-y-3">
+        <div className="py-20 text-center space-y-3">
           <RefreshCw className="size-8 mx-auto animate-spin text-primary opacity-60" />
-          <p className="text-sm text-muted-foreground">Loading accounts...</p>
+          <p className="text-sm text-muted-foreground font-medium">Updating account balances...</p>
         </div>
       ) : filteredAccounts.length === 0 ? (
-        <Card className="border-dashed">
+        <Card className="border-dashed bg-card/50">
           <CardContent className="py-16 text-center space-y-3">
-            <div className="size-12 rounded-full bg-muted flex items-center justify-center mx-auto text-muted-foreground">
-              <Building2 className="size-6" />
+            <div className="size-14 rounded-2xl bg-muted/60 flex items-center justify-center mx-auto text-muted-foreground">
+              <Building2 className="size-7" />
             </div>
             <div>
-              <h3 className="text-base font-semibold">No accounts found</h3>
+              <h3 className="text-base font-semibold text-foreground">No accounts found</h3>
               <p className="text-xs text-muted-foreground max-w-sm mx-auto mt-1">
-                No accounts match the current filter. Add a new Bank, Sahakari, or Cash drawer.
+                {searchTerm ? 'No accounts match your search query.' : 'Add your bank accounts, cooperative deposits, or cash counters.'}
               </p>
             </div>
             <Button
               size="sm"
               onClick={handleOpenCreateAccount}
-              className="text-xs rounded-xl gap-1.5"
+              className="text-xs rounded-xl gap-1.5 h-9 font-medium"
             >
-              <Plus className="size-4" /> Add Account
+              <Plus className="size-4" /> Add Account Now
             </Button>
           </CardContent>
         </Card>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
           {filteredAccounts.map(acc => {
             const balance = accountBalancesMap.get(acc.id) ?? 0;
             const Icon = getAccountIcon(acc.type);
             const isLiquid = acc.type === 'cash' || acc.type === 'bank' || acc.type === 'cooperative' || acc.type === 'digital';
+            const qrInflow = acc.type === 'bank' ? (qrStats.perAccount.get(acc.id) ?? 0) : 0;
 
             return (
               <Card
                 key={acc.id}
-                className="hover:shadow-md hover:border-primary/40 transition-all duration-150 bg-card overflow-hidden"
+                className="group relative overflow-hidden bg-card border-border/70 hover:border-primary/50 hover:shadow-md transition-all duration-200 rounded-2xl flex flex-col justify-between"
               >
-                <CardContent className="p-4 space-y-3">
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-muted text-foreground/80 shrink-0">
-                        <Icon className="size-5" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <h3 className="font-semibold text-sm leading-tight text-foreground">
-                            {acc.name}
-                          </h3>
-                          {acc.type === 'bank' && acc.paymentMethods?.includes('qr') && (
-                            <Badge variant="outline" className="text-[10px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/20 px-1.5 py-0 h-4">
-                              <QrCode className="size-2.5 mr-1" /> Fonepay QR
-                            </Badge>
-                          )}
-                          {acc.type === 'digital' && (
-                            <Badge variant="outline" className="text-[10px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20 px-1.5 py-0 h-4">
-                              Wallet
-                            </Badge>
-                          )}
+                <CardContent className="p-4 space-y-3 flex-1 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    {/* Header Row: Icon + Name + Actions Dropdown */}
+                    <div className="flex items-start justify-between gap-2.5">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="p-2.5 rounded-xl bg-primary/10 text-primary shrink-0 group-hover:scale-105 transition-transform">
+                          <Icon className="size-5" />
                         </div>
-                        <p className="text-xs text-muted-foreground capitalize mt-0.5">
-                          {acc.institutionName ? `${acc.institutionName} · ` : ''}
-                          {acc.type === 'cooperative' ? 'Sahakari' : acc.type === 'digital' ? 'Digital Wallet (eSewa/Khalti)' : acc.type}
-                        </p>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h3 className="font-bold text-sm leading-tight text-foreground truncate max-w-[180px]">
+                              {acc.name}
+                            </h3>
+                            {acc.type === 'bank' && acc.paymentMethods?.includes('qr') && (
+                              <Badge variant="outline" className="text-[9px] bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30 px-1.5 py-0 h-4 font-semibold">
+                                <QrCode className="size-2.5 mr-1" /> QR Linked
+                              </Badge>
+                            )}
+                            {acc.type === 'digital' && (
+                              <Badge variant="outline" className="text-[9px] bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/30 px-1.5 py-0 h-4 font-semibold">
+                                Wallet
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-muted-foreground capitalize mt-0.5 truncate">
+                            {acc.institutionName ? `${acc.institutionName} · ` : ''}
+                            {acc.type === 'cooperative' ? 'Sahakari' : acc.type === 'digital' ? 'Digital Wallet' : acc.type}
+                          </p>
+                        </div>
                       </div>
-                    </div>
 
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg">
-                          <MoreVertical className="size-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-48 text-xs">
-                        {isLiquid && (
-                          <DropdownMenuItem onClick={() => handleOpenTransfer(acc)}>
-                            <ArrowRightLeft className="size-3.5 mr-2" />
-                            Transfer from here
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon" className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground shrink-0">
+                            <MoreVertical className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-48 text-xs rounded-xl shadow-lg">
+                          {isLiquid && (
+                            <DropdownMenuItem onClick={() => handleOpenTransfer(acc)} className="cursor-pointer">
+                              <ArrowRightLeft className="size-3.5 mr-2 text-primary" />
+                              Transfer Funds
+                            </DropdownMenuItem>
+                          )}
+                          <DropdownMenuItem onClick={() => handleOpenOpeningBalance(acc)} className="cursor-pointer">
+                            <SlidersHorizontal className="size-3.5 mr-2" />
+                            Adjust / Set Balance
                           </DropdownMenuItem>
-                        )}
-                        <DropdownMenuItem onClick={() => handleOpenOpeningBalance(acc)}>
-                          <SlidersHorizontal className="size-3.5 mr-2" />
-                          Set / Adjust Balance
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => handleOpenEditAccount(acc)}>
-                          <Edit2 className="size-3.5 mr-2" />
-                          Edit Details
-                        </DropdownMenuItem>
-                        <DropdownMenuItem onClick={() => setLocation('/daybook')}>
-                          <History className="size-3.5 mr-2" />
-                          View in Daybook
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
+                          <DropdownMenuItem onClick={() => handleOpenEditAccount(acc)} className="cursor-pointer">
+                            <Edit2 className="size-3.5 mr-2" />
+                            Edit Details
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => setLocation('/daybook')} className="cursor-pointer">
+                            <History className="size-3.5 mr-2" />
+                            View in Daybook
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+
+                    {/* Account Number Pill */}
+                    {acc.accountNumber && (
+                      <div className="flex items-center justify-between text-xs bg-muted/40 px-3 py-1.5 rounded-xl font-mono text-muted-foreground border border-border/40">
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground/70">A/C:</span>
+                        <span className="font-semibold text-foreground tracking-wide select-all">{acc.accountNumber}</span>
+                      </div>
+                    )}
+
+                    {/* QR Inflow Channel Breakdown */}
+                    {qrInflow > 0 && (
+                      <div className="bg-emerald-500/10 border border-emerald-500/20 px-3 py-1.5 rounded-xl text-[11px] flex justify-between items-center text-emerald-700 dark:text-emerald-300">
+                        <span className="flex items-center gap-1 font-medium">
+                          <QrCode className="size-3" /> Fonepay QR Inflow:
+                        </span>
+                        <span className="font-bold">+{format(qrInflow)}</span>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Account Number or Note if present */}
-                  {acc.accountNumber && (
-                    <div className="text-xs bg-muted/40 px-2.5 py-1 rounded-md font-mono text-muted-foreground flex justify-between">
-                      <span>A/C:</span>
-                      <span className="font-semibold text-foreground">{acc.accountNumber}</span>
-                    </div>
-                  )}
-
-                  {/* QR Inflow Channel Breakdown if Bank receives QR */}
-                  {acc.type === 'bank' && (qrStats.perAccount.get(acc.id) ?? 0) > 0 && (
-                    <div className="bg-purple-500/5 border border-purple-500/20 px-2.5 py-1 rounded-md text-[11px] flex justify-between items-center text-purple-700 dark:text-purple-300">
-                      <span className="flex items-center gap-1 font-medium">
-                        <QrCode className="size-3" /> Fonepay QR Inflow:
+                  {/* Balance Display & Bottom Actions */}
+                  <div className="pt-3 border-t border-border/60 space-y-2.5 mt-2">
+                    <div className="flex items-baseline justify-between">
+                      <span className="text-xs font-medium text-muted-foreground">Available Balance</span>
+                      <span
+                        className={`text-lg sm:text-xl font-extrabold tracking-tight ${
+                          balance > 0
+                            ? 'text-emerald-600 dark:text-emerald-400'
+                            : balance < 0
+                            ? 'text-rose-600 dark:text-rose-400'
+                            : 'text-foreground'
+                        }`}
+                      >
+                        {format(balance)}
                       </span>
-                      <span className="font-bold">+{format(qrStats.perAccount.get(acc.id) ?? 0)}</span>
                     </div>
-                  )}
 
-                  {/* Balance Display */}
-                  <div className="border-t pt-2.5 flex items-center justify-between">
-                    <span className="text-xs text-muted-foreground">Current Balance</span>
-                    <span
-                      className={`text-base font-bold ${
-                        balance > 0
-                          ? 'text-emerald-600 dark:text-emerald-400'
-                          : balance < 0
-                          ? 'text-rose-600 dark:text-rose-400'
-                          : 'text-foreground'
-                      }`}
-                    >
-                      {format(balance)}
-                    </span>
+                    {/* Quick Touch Action Buttons */}
+                    {isLiquid && (
+                      <div className="grid grid-cols-2 gap-2 pt-0.5">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => handleOpenTransfer(acc)}
+                          className="h-8 text-xs rounded-xl font-medium border-border/80 hover:bg-primary/5 hover:border-primary/40 active:scale-95 transition-all"
+                        >
+                          <ArrowRightLeft className="size-3.5 mr-1 text-primary" /> Transfer
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => handleOpenOpeningBalance(acc)}
+                          className="h-8 text-xs rounded-xl font-medium text-muted-foreground hover:text-foreground hover:bg-muted active:scale-95 transition-all"
+                        >
+                          Adjust Bal
+                        </Button>
+                      </div>
+                    )}
                   </div>
-
-                  {/* Quick Action footer */}
-                  {isLiquid && (
-                    <div className="grid grid-cols-2 gap-2 pt-1">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => handleOpenTransfer(acc)}
-                        className="h-7 text-[11px] rounded-lg"
-                      >
-                        <ArrowRightLeft className="size-3 mr-1" /> Transfer
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => handleOpenOpeningBalance(acc)}
-                        className="h-7 text-[11px] rounded-lg text-muted-foreground hover:text-foreground"
-                      >
-                        Adjust Bal
-                      </Button>
-                    </div>
-                  )}
                 </CardContent>
               </Card>
             );

@@ -84,6 +84,7 @@ const CashBookList = retryLazy(() => import('@/pages/cash-book/List'));
 const CashBookForm = retryLazy(() => import('@/pages/cash-book/Form'));
 const DaybookList = retryLazy(() => import('@/pages/daybook/List'));
 const AccountsList = retryLazy(() => import('@/pages/accounts/List'));
+const MoreHub = retryLazy(() => import('@/pages/MoreHub'));
 const HotelGrid = retryLazy(() => import('@/pages/hotel/Grid'));
 const HotelRoomForm = retryLazy(() => import('@/pages/hotel/RoomForm'));
 const HotelBillingList = retryLazy(() => import('@/pages/hotel/BillingList'));
@@ -188,6 +189,8 @@ function Router() {
             <Route path="/cash-book/entry/:type" component={CashBookForm} />
             <Route path="/daybook" component={DaybookList} />
             <Route path="/accounts" component={AccountsList} />
+            <Route path="/more" component={MoreHub} />
+            <Route path="/extras" component={MoreHub} />
 
             <Route path="/credit" component={CreditList} />
             <Route path="/credit/new" component={CreditForm} />
