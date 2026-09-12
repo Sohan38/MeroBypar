@@ -90,10 +90,12 @@ export default function InventoryList() {
     return getLocationStockForProduct(product, locationFilter, locationStocks);
   }, [locationFilter, locationStocks]);
 
-  // Map productId → worst expiry status across its batches
+  // Map productId → worst expiry status across its ACTIVE (quantity > 0) batches
   const expiryStatusMap = useMemo(() => {
     const map: Record<string, 'expired' | 'expiring' | 'ok' | 'none'> = {};
     for (const b of batches) {
+      // Depleted batches must never trigger expiry alerts
+      if (b.quantity <= 0) continue;
       const s = getBatchStatus(b.expiryDate);
       const prev = map[b.productId];
       if (!prev || s === 'expired' || (s === 'expiring' && prev !== 'expired')) {
@@ -232,10 +234,13 @@ export default function InventoryList() {
   const renderBatchChips = (productId: string) => {
     const productBatches = batchesByProduct[productId] ?? [];
 
+    // Always exclude fully depleted batches first
+    const activeBatches = productBatches.filter(batch => batch.quantity > 0);
+
     // Filter batches by location if a location is selected
-    let batchesToShow = productBatches;
+    let batchesToShow = activeBatches;
     if (locationFilter !== 'all') {
-      batchesToShow = productBatches.filter(batch => {
+      batchesToShow = activeBatches.filter(batch => {
         const allocationAtLocation = batchLocations.find(
           bl => bl.batchId === batch.id && bl.locationId === locationFilter
         );
@@ -418,8 +423,9 @@ export default function InventoryList() {
               const isOutOfStock = displayQuantity === 0;
               const expiryStatus = expiryStatusMap[item.id] ?? 'none';
               const productBatches = batchesByProduct[item.id] ?? [];
+              // Only consider batches that still have remaining stock
               const nearestExpiry = productBatches
-                .filter(b => b.expiryDate)
+                .filter(b => b.expiryDate && b.quantity > 0)
                 .sort((a, b) => (a.expiryDate ?? '').localeCompare(b.expiryDate ?? ''))[0];
 
               return (

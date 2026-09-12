@@ -134,15 +134,15 @@ export default function InventoryDetail() {
   const retailValue = product.sellingRate * displayQuantity;
 
   const expiredCount = batches.filter(
-    b => getBatchStatus(b.expiryDate) === 'expired'
+    b => b.quantity > 0 && getBatchStatus(b.expiryDate) === 'expired'
   ).length;
 
   const expiringSoonCount = batches.filter(
-    b => getBatchStatus(b.expiryDate) === 'expiring'
+    b => b.quantity > 0 && getBatchStatus(b.expiryDate) === 'expiring'
   ).length;
 
   const healthyCount = batches.filter(
-    b => getBatchStatus(b.expiryDate) === 'ok'
+    b => b.quantity > 0 && getBatchStatus(b.expiryDate) === 'ok'
   ).length;
 
   const totalBatchStock = useMemo(() => {
@@ -179,13 +179,15 @@ export default function InventoryDetail() {
     return breakdown;
   }, [product, locations, locationStocks, locationFilter]);
 
+  // Nearest non-expired batch that still has remaining stock (FEFO-aware)
   const nextExpiryBatch = batches.find(
-    b => getBatchStatus(b.expiryDate) !== 'expired'
+    b => b.quantity > 0 && getBatchStatus(b.expiryDate) !== 'expired'
   );
 
+  // Latest expiry batch (furthest out) with remaining stock
   const latestExpiryBatch =
     batches.length > 0
-      ? [...batches].reverse().find(b => b.expiryDate)
+      ? [...batches].filter(b => b.quantity > 0).reverse().find(b => b.expiryDate)
       : undefined;
 
   const activeLocation = useMemo(() => {
