@@ -17,6 +17,7 @@ import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContai
 import { useApp } from '@/contexts/AppContext';
 import { useFeature } from '@/hooks/useFeature';
 import { buildFinancialMetrics, getSaleItemCOGS } from '@/lib/financialMetrics';
+import { isActiveSale } from '@/lib/saleUtils';
 import { cn } from '@/lib/utils';
 
 export default function Dashboard() {
@@ -43,6 +44,7 @@ export default function Dashboard() {
   }, []);
 
   const todaySales = useMemo(() => sales.filter(s => {
+    if (!isActiveSale(s)) return false;
     try { return isToday(parseISO(s.date)); } catch { return isToday(new Date(s.date)); }
   }), [sales]);
 
@@ -101,6 +103,7 @@ export default function Dashboard() {
 
     const productSales: Record<string, { name: string; qty: number; revenue: number }> = {};
     for (const sale of sales) {
+      if (!isActiveSale(sale)) continue;
       const saleSubtotal = sale.items.reduce((sum, item) => sum + item.subtotal, 0);
       const discountedSaleSubtotal = saleSubtotal > 0 ? Math.max(0, saleSubtotal - sale.discount) : saleSubtotal;
 
@@ -160,6 +163,7 @@ export default function Dashboard() {
     const expensesByDate = new Map<string, number>();
 
     for (const sale of sales) {
+      if (!isActiveSale(sale)) continue;
       const dateKey = (sale.date ?? '').split('T')[0] ?? (sale.date ?? '').slice(0, 10);
       if (!dateKey) continue;
 

@@ -1,5 +1,6 @@
 import { useMemo } from 'react';
 import { useSales, useCredit } from '@/contexts/GlobalProviders';
+import { isActiveSale } from '@/lib/saleUtils';
 
 export interface CustomerStats {
     totalSpent: number;
@@ -33,7 +34,7 @@ export function useAllCustomerStats(): Map<string, CustomerStats> {
         const map = new Map<string, CustomerStats>();
 
         for (const sale of sales) {
-            if (!sale.customerId) continue;
+            if (!sale.customerId || !isActiveSale(sale)) continue;
             const s: CustomerStats = map.get(sale.customerId) ?? { ...EMPTY_STATS, sales: [] };
             s.totalSpent += sale.grandTotal;
             s.visitCount += 1;

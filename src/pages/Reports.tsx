@@ -17,6 +17,7 @@ import {
 } from 'date-fns';
 import { TrendingUp, TrendingDown, Package, Users, CalendarRange, Receipt, CreditCard, Coins, ShoppingCart, Truck, Wallet, PiggyBank } from 'lucide-react';
 import { buildFinancialMetrics } from '@/lib/financialMetrics';
+import { isActiveSale } from '@/lib/saleUtils';
 
 const COLORS = [
   'hsl(var(--chart-1))', 'hsl(var(--chart-2))', 'hsl(var(--chart-3))',
@@ -67,7 +68,7 @@ export default function Reports() {
     } catch { return false; }
   };
 
-  const filteredSales = useMemo(() => sales.filter(s => inRange(s.date)), [sales, start, end]);
+  const filteredSales = useMemo(() => sales.filter(s => isActiveSale(s) && inRange(s.date)), [sales, start, end]);
   const filteredExpenses = useMemo(() => expenses.filter(e => inRange(e.date)), [expenses, start, end]);
   const filteredPurchases = useMemo(() => purchases.filter(p => inRange(p.date)), [purchases, start, end]);
   const filteredCredits = useMemo(() => credits.filter(c => inRange(c.date)), [credits, start, end]);
