@@ -479,10 +479,10 @@ export default function CreditList() {
               const remainingCredits = summary.credits.length - creditLimit;
 
               return (
-                <Card key={summary.key} className="shadow-sm hover:shadow-md transition-shadow">
+                <Card key={summary.key} className="rounded-2xl border border-border/70 bg-card shadow-xs hover:shadow-md hover:border-amber-500/40 transition-all overflow-hidden">
                   {/* Customer summary row */}
                   <div
-                    className="p-4 sm:p-5 cursor-pointer flex items-start justify-between gap-3"
+                    className="p-4 sm:p-5 cursor-pointer flex items-start justify-between gap-3 active:scale-[0.99] transition-transform"
                     onClick={() => toggleCustomer(summary.key)}
                   >
                     <div className="flex items-center gap-3 min-w-0 flex-1">

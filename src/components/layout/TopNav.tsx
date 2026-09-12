@@ -1,17 +1,24 @@
-import { useState } from 'react';
-import { Link, useLocation } from 'wouter';
-import { Home, Package, ShoppingCart, Hotel, MoreHorizontal, Settings, Users, Truck, FileText, UtensilsCrossed, Receipt, Wallet, Banknote, Search, Menu, X, Sun, Moon } from 'lucide-react';
+import { useLocation } from 'wouter';
+import { Search, ArrowLeft, Sun, Moon, Laptop, Settings } from 'lucide-react';
 import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
-import { Sheet, SheetContent, SheetTrigger, SheetHeader, SheetTitle } from '@/components/ui/sheet';
-import { ScrollArea } from '@/components/ui/scroll-area';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
-import { cn } from '@/lib/utils';
 
 export function TopNav() {
   const { settings, theme, setTheme, currentUser } = useApp();
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
+
+  // Determine if we're on a root tab or deep screen
+  const isRootTab = location === '/' || location === '/sales' || location === '/inventory' || location === '/accounts' || location === '/more' || location === '/extras';
+
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      window.history.back();
+    } else {
+      setLocation('/');
+    }
+  };
 
   const toggleTheme = () => {
     if (theme === 'light') setTheme('dark');
@@ -20,52 +27,94 @@ export function TopNav() {
   };
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between border-b bg-card px-4 shadow-sm md:h-16 lg:px-6">
-      <div className="flex items-center gap-2 md:gap-4">
-        {/* Mobile menu trigger could go here if we want a left drawer instead of bottom "more" */}
-        <div className="font-bold text-lg text-primary truncate max-w-[150px] sm:max-w-[300px]">
-          {settings.businessName}
+    <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between border-b border-border/70 bg-card/90 backdrop-blur-md px-3 sm:px-4 md:h-16 lg:px-6 pt-safe transition-all">
+      <div className="flex items-center gap-2 min-w-0">
+        {!isRootTab && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={handleBack}
+            className="h-9 w-9 -ml-1 rounded-xl text-foreground hover:bg-muted active:scale-90 transition-transform"
+            aria-label="Back"
+          >
+            <ArrowLeft className="size-5" />
+          </Button>
+        )}
+
+        <div className="flex flex-col min-w-0">
+          <span className="font-bold text-base sm:text-lg text-foreground truncate tracking-tight">
+            {settings.businessName || 'MeroByapar'}
+          </span>
+          <span className="text-[10px] text-muted-foreground font-medium truncate -mt-1 hidden sm:block">
+            {currentUser?.name || 'Admin'}
+          </span>
         </div>
       </div>
 
-      <div className="flex items-center gap-2 md:gap-4">
-        <Button variant="ghost" size="icon" onClick={() => setLocation('/search')} className="text-muted-foreground hover:text-foreground">
-          <Search className="h-5 w-5" />
-        </Button>
-        
-        <Button variant="ghost" size="icon" onClick={toggleTheme} className="text-muted-foreground hover:text-foreground">
-          {theme === 'light' ? <Sun className="h-5 w-5" /> : theme === 'dark' ? <Moon className="h-5 w-5" /> : <Settings className="h-5 w-5" />}
+      <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+        {location !== '/search' && (
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setLocation('/search')}
+            className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/70 active:scale-95 transition-all"
+            title="Search"
+            aria-label="Search"
+          >
+            <Search className="size-4.5" />
+          </Button>
+        )}
+
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={toggleTheme}
+          className="h-9 w-9 rounded-xl text-muted-foreground hover:text-foreground hover:bg-muted/70 active:scale-95 transition-all"
+          title="Toggle Theme"
+          aria-label="Toggle Theme"
+        >
+          {theme === 'light' ? (
+            <Sun className="size-4.5 text-amber-500" />
+          ) : theme === 'dark' ? (
+            <Moon className="size-4.5 text-blue-400" />
+          ) : (
+            <Laptop className="size-4.5" />
+          )}
         </Button>
 
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
-            <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-              <Avatar className="h-8 w-8">
-                <AvatarFallback className="bg-primary/10 text-primary font-semibold">
-                  {currentUser?.name?.charAt(0) || 'U'}
+            <Button variant="ghost" className="relative h-8.5 w-8.5 rounded-full p-0 active:scale-95 transition-transform">
+              <Avatar className="h-8.5 w-8.5 border border-border/80">
+                <AvatarFallback className="bg-primary/10 text-primary font-bold text-xs">
+                  {currentUser?.name?.charAt(0)?.toUpperCase() || 'U'}
                 </AvatarFallback>
               </Avatar>
             </Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-56">
-            <div className="flex items-center justify-start gap-2 p-2">
-              <div className="flex flex-col space-y-1 leading-none">
-                {currentUser ? (
-                  <>
-                    <p className="font-medium">{currentUser.name}</p>
-                    <p className="w-[200px] truncate text-sm text-muted-foreground capitalize">{currentUser.role}</p>
-                  </>
-                ) : (
-                  <>
-                    <p className="font-medium">Guest User</p>
-                    <p className="w-[200px] text-sm text-muted-foreground">Admin mode active</p>
-                  </>
-                )}
+          <DropdownMenuContent align="end" className="w-56 rounded-2xl shadow-xl border-border/80 p-1.5">
+            <div className="flex items-center gap-2.5 p-2 bg-muted/40 rounded-xl mb-1">
+              <Avatar className="h-8 w-8">
+                <AvatarFallback className="bg-primary text-primary-foreground font-bold text-xs">
+                  {currentUser?.name?.charAt(0)?.toUpperCase() || 'U'}
+                </AvatarFallback>
+              </Avatar>
+              <div className="flex flex-col min-w-0">
+                <p className="font-semibold text-xs text-foreground truncate">
+                  {currentUser ? currentUser.name : 'Administrator'}
+                </p>
+                <p className="text-[10px] text-muted-foreground capitalize">
+                  {currentUser?.role || 'Admin Mode'}
+                </p>
               </div>
             </div>
-            <DropdownMenuItem onClick={() => setLocation('/settings')}>
-              <Settings className="mr-2 h-4 w-4" />
-              <span>Settings</span>
+
+            <DropdownMenuItem
+              onClick={() => setLocation('/settings')}
+              className="rounded-xl text-xs font-medium cursor-pointer py-2"
+            >
+              <Settings className="mr-2 size-4 text-muted-foreground" />
+              <span>System Settings</span>
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>

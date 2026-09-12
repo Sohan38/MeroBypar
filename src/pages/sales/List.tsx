@@ -577,32 +577,34 @@ function SaleRow({ sale, serialNo, showSerial, format, onClick, onPrint }: SaleR
       onClick={onClick}
       onKeyDown={e => e.key === 'Enter' && onClick()}
       className="
-        group flex items-center gap-3 rounded-xl border bg-card
-        px-4 py-3 cursor-pointer
-        hover:bg-muted/40 active:scale-[0.99]
-        transition-all duration-100 select-none
+        group flex items-center gap-3 rounded-2xl border border-border/70 bg-card
+        p-3.5 sm:p-4 cursor-pointer shadow-xs
+        hover:border-primary/40 hover:bg-muted/30 active:scale-[0.98]
+        transition-all duration-150 select-none
       "
     >
       {/* Serial number */}
       {showSerial && (
-        <div className="text-xs text-muted-foreground tabular-nums w-6 text-center shrink-0 font-medium">
+        <div className="text-[11px] text-muted-foreground/80 tabular-nums w-5 text-center shrink-0 font-bold">
           {serialNo}
         </div>
       )}
 
       {/* Receipt icon */}
-      <div className="h-9 w-9 rounded-lg bg-primary/10 flex items-center justify-center shrink-0">
-        <Receipt className="h-4 w-4 text-primary" />
+      <div className="size-10 rounded-xl bg-primary/10 text-primary flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+        <Receipt className="size-5" />
       </div>
 
       {/* Main info */}
       <div className="flex-1 min-w-0">
-        <div className="flex items-center gap-2">
-          <span className="font-semibold text-sm">{invoiceId}</span>
-          {sale.customerName && (
-            <span className="text-xs text-muted-foreground truncate hidden sm:inline">
+        <div className="flex items-center gap-2 flex-wrap">
+          <span className="font-bold text-sm text-foreground tracking-tight">{invoiceId}</span>
+          {sale.customerName ? (
+            <span className="text-xs text-muted-foreground truncate max-w-[140px] font-medium">
               · {sale.customerName}
             </span>
+          ) : (
+            <span className="text-[11px] text-muted-foreground/80">· Counter Sale</span>
           )}
         </div>
 
@@ -610,11 +612,14 @@ function SaleRow({ sale, serialNo, showSerial, format, onClick, onPrint }: SaleR
           {itemPreview || 'No items'}
         </p>
 
-        <div className="flex items-center gap-2 mt-1">
-          <span className="text-xs text-muted-foreground tabular-nums">{timeLabel}</span>
-          <span className="text-muted-foreground/40 text-xs">·</span>
-          <span className="text-xs text-muted-foreground">{totalQty} item{totalQty !== 1 ? 's' : ''}</span>
-          <Badge variant="outline" className="text-[10px] px-1.5 py-0 h-4 capitalize leading-4">
+        <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+          <span className="text-[11px] font-medium text-muted-foreground tabular-nums">{timeLabel}</span>
+          <span className="text-muted-foreground/40 text-[10px]">·</span>
+          <span className="text-[11px] text-muted-foreground">{totalQty} item{totalQty !== 1 ? 's' : ''}</span>
+          <Badge
+            variant="outline"
+            className="text-[10px] px-2 py-0 h-4.5 capitalize font-semibold border-primary/20 bg-primary/5 text-primary"
+          >
             {pmtLabel}
           </Badge>
         </div>
@@ -623,28 +628,26 @@ function SaleRow({ sale, serialNo, showSerial, format, onClick, onPrint }: SaleR
       {/* Amount + actions */}
       <div className="flex items-center gap-2 shrink-0">
         <div className="text-right">
-          <p className="font-bold tabular-nums text-sm">{format(sale.grandTotal)}</p>
+          <p className="font-extrabold tabular-nums text-sm sm:text-base text-foreground">{format(sale.grandTotal)}</p>
           {sale.discount > 0 && (
-            <p className="text-[10px] text-green-600 tabular-nums">
-              -{format(sale.discount)} off
+            <p className="text-[10px] text-emerald-600 dark:text-emerald-400 font-semibold tabular-nums">
+              -{format(sale.discount)}
             </p>
           )}
         </div>
 
-        {/* Print button — visible on hover on desktop, always on mobile */}
+        {/* Print button */}
         <button
           type="button"
           aria-label="Print receipt"
           onClick={e => onPrint(e, sale)}
           className="
-            h-8 w-8 rounded-lg flex items-center justify-center
-            text-muted-foreground
-            hover:bg-primary/10 hover:text-primary
-            active:scale-95 transition-all
-            opacity-100 md:opacity-0 md:group-hover:opacity-100
+            size-8.5 rounded-xl flex items-center justify-center
+            text-muted-foreground hover:text-foreground hover:bg-muted/70
+            border border-border/60 active:scale-90 transition-all shrink-0
           "
         >
-          <Printer className="h-3.5 w-3.5" />
+          <Printer className="size-4" />
         </button>
       </div>
     </div>

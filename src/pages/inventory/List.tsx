@@ -425,16 +425,16 @@ export default function InventoryList() {
               return (
                 <Card
                   key={item.id}
-                  className={`shadow-sm hover:shadow-md transition-shadow overflow-hidden ${isOutOfStock || expiryStatus === 'expired'
+                  className={`rounded-2xl border bg-card shadow-xs hover:shadow-md transition-all overflow-hidden ${isOutOfStock || expiryStatus === 'expired'
                     ? 'border-destructive/40'
                     : isLowStock || expiryStatus === 'expiring'
-                      ? 'border-orange-300/60'
-                      : 'hover:border-primary/40'
+                      ? 'border-amber-400/60'
+                      : 'border-border/70 hover:border-primary/40'
                     }`}
                 >
                   <CardContent className="p-0">
                     <div
-                      className="p-4 flex gap-3 cursor-pointer hover:bg-muted/30 transition-colors"
+                      className="p-3.5 sm:p-4 flex gap-3 cursor-pointer hover:bg-muted/30 active:scale-[0.99] transition-all"
                       onClick={() => setLocation(`/inventory/${item.id}${locationFilter !== 'all' ? `?location=${locationFilter}` : ''}`)}
                     >
                       {item.imageBase64 ? (
