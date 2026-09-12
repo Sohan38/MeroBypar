@@ -3,13 +3,19 @@ import { useSales, useCustomers } from '@/contexts/GlobalProviders';
 import { useApp } from '@/contexts/AppContext';
 import { useSmartBack } from '@/contexts/NavigationContext';
 import { useCurrency } from '@/hooks/useCurrency';
+import { useStorageProvider } from '@/storage/StorageContext';
+import { useConfirm } from '@/contexts/ConfirmContext';
 import { format as formatDate, parseISO } from 'date-fns';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { ArrowLeft, Printer, ShoppingCart, User, Calendar, CreditCard } from 'lucide-react';
+import { ArrowLeft, Printer, ShoppingCart, User, Calendar, CreditCard, Undo2, AlertTriangle } from 'lucide-react';
 import { SaleBillPrint } from '@/components/SaleBillPrint';
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useCallback } from 'react';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { toast } from 'sonner';
+import { voidSale } from '@/services/saleRollbackService';
 
 import { useFeature } from '@/hooks/useFeature';
 
@@ -22,7 +28,12 @@ export default function SaleDetail() {
   const { items: customers } = useCustomers();
   const { settings } = useApp();
   const { format } = useCurrency();
+  const storage = useStorageProvider();
+  const confirm = useConfirm();
   const [showPrint, setShowPrint] = useState(false);
+  const [voidDialogOpen, setVoidDialogOpen] = useState(false);
+  const [voidReason, setVoidReason] = useState('');
+  const [voiding, setVoiding] = useState(false);
 
   const sale = useMemo(
     () => sales.find(s => s.id === id),
@@ -35,6 +46,46 @@ export default function SaleDetail() {
       : null,
     [customers, sale]
   );
+
+  const isVoided = sale?.status === 'voided';
+
+  const handleVoidConfirm = useCallback(async () => {
+    if (!sale || !voidReason.trim()) return;
+
+    setVoiding(true);
+    try {
+      const result = await voidSale(storage, {
+        saleId: sale.id,
+        reason: voidReason.trim(),
+      });
+
+      setVoidDialogOpen(false);
+      setVoidReason('');
+
+      const messages: string[] = ['Sale voided successfully'];
+      if (result.creditRemoved) messages.push('Linked credit removed');
+      toast.success(messages.join(' • '));
+    } catch (e: any) {
+      toast.error(e?.message || 'Failed to void sale');
+      console.error('Void sale error:', e);
+    } finally {
+      setVoiding(false);
+    }
+  }, [sale, voidReason, storage]);
+
+  const handleVoidClick = useCallback(async () => {
+    const confirmed = await confirm({
+      title: 'Void this sale?',
+      description: 'This will restore all inventory, reverse financial records, and mark this sale as voided. This action cannot be undone.',
+      confirmLabel: 'Continue to Void',
+      cancelLabel: 'Cancel',
+      variant: 'destructive',
+    });
+
+    if (confirmed) {
+      setVoidDialogOpen(true);
+    }
+  }, [confirm]);
 
   if (!sale) {
     return (
@@ -82,14 +133,54 @@ export default function SaleDetail() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <div>
-            <h1 className="text-xl font-bold">Sale Details</h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-xl font-bold">Sale Details</h1>
+              {isVoided && (
+                <Badge variant="destructive" className="text-[10px] px-1.5 py-0 h-5 uppercase font-bold tracking-wider">
+                  Voided
+                </Badge>
+              )}
+            </div>
             <p className="text-xs text-muted-foreground">{sale.id.slice(-8).toUpperCase()}</p>
           </div>
         </div>
-        <Button onClick={() => setShowPrint(true)} className="gap-2">
-          <Printer className="h-4 w-4" /> Print Bill
-        </Button>
+        <div className="flex items-center gap-2">
+          {!isVoided && (
+            <Button
+              variant="outline"
+              onClick={handleVoidClick}
+              className="gap-2 border-destructive/30 text-destructive hover:bg-destructive/10 hover:text-destructive"
+            >
+              <Undo2 className="h-4 w-4" />
+              <span className="hidden sm:inline">Void Sale</span>
+            </Button>
+          )}
+          <Button onClick={() => setShowPrint(true)} className="gap-2">
+            <Printer className="h-4 w-4" /> Print Bill
+          </Button>
+        </div>
       </div>
+
+      {/* Voided Banner */}
+      {isVoided && (
+        <div className="flex items-start gap-3 rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+          <AlertTriangle className="h-5 w-5 text-destructive shrink-0 mt-0.5" />
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold text-destructive">This sale has been voided</p>
+            <p className="text-xs text-muted-foreground mt-1">
+              {sale.voidedAt && (
+                <>Voided on {(() => { try { return formatDate(parseISO(sale.voidedAt), 'PPpp'); } catch { return sale.voidedAt; } })()}</>
+              )}
+              {sale.voidedReason && (
+                <> — <span className="font-medium text-foreground">{sale.voidedReason}</span></>
+              )}
+            </p>
+            <p className="text-xs text-muted-foreground mt-1">
+              All inventory has been restored and financial records reversed. This record is preserved for audit purposes.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Meta */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -198,6 +289,46 @@ export default function SaleDetail() {
           onClose={() => setShowPrint(false)}
         />
       )}
+
+      {/* Void Reason Dialog */}
+      <Dialog open={voidDialogOpen} onOpenChange={(open) => { if (!voiding) setVoidDialogOpen(open); }}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-destructive">
+              <Undo2 className="h-5 w-5" />
+              Void Sale
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">
+              Please provide a reason for voiding this sale. This is required for audit purposes and cannot be changed later.
+            </p>
+            <Input
+              placeholder="e.g. Customer returned items, Wrong items scanned, Duplicate entry…"
+              value={voidReason}
+              onChange={e => setVoidReason(e.target.value)}
+              autoFocus
+              disabled={voiding}
+            />
+          </div>
+          <DialogFooter className="gap-2 sm:gap-2">
+            <Button
+              variant="outline"
+              onClick={() => { setVoidDialogOpen(false); setVoidReason(''); }}
+              disabled={voiding}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={handleVoidConfirm}
+              disabled={!voidReason.trim() || voiding}
+            >
+              {voiding ? 'Voiding…' : 'Void Sale'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

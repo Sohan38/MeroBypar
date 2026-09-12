@@ -378,6 +378,9 @@ export interface SaleInvoice extends StorageRecord {
   paymentMethod: PaymentMethod;
   splitPayments?: { method: PaymentMethod; amount: number }[];
   notes: string;
+  status?: 'completed' | 'voided';    // defaults to 'completed' for backward compat
+  voidedAt?: string | null;            // ISO timestamp when voided
+  voidedReason?: string | null;        // required reason for audit trail
 }
 
 export interface HotelRoom extends StorageRecord {

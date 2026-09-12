@@ -1,5 +1,6 @@
 import { endOfDay, isAfter, isBefore, parseISO, startOfDay } from 'date-fns';
 import type { Credit, Expense, Product, PurchaseInvoice, SaleInvoice, SaleItem } from '@/types';
+import { isActiveSale } from './saleUtils';
 
 function toDate(value: string | Date): Date {
     if (value instanceof Date) return value;
@@ -75,7 +76,7 @@ export function buildFinancialMetrics(params: {
 
     const productMap = new Map(inventory.map(product => [product.id, product]));
 
-    const salesInScope = sales.filter(sale => isWithinRange(sale.date, start, end));
+    const salesInScope = sales.filter(sale => isActiveSale(sale) && isWithinRange(sale.date, start, end));
     const expensesInScope = expenses.filter(expense => isWithinRange(expense.date, start, end));
     const operatingExpensesInScope = expensesInScope.filter(expense => !expense.sourcePurchaseId);
     const purchasesInScope = purchases.filter(purchase => isWithinRange(purchase.date, start, end));

@@ -33,6 +33,7 @@ import {
   lazy,
   Suspense,
 } from 'react';
+import { isActiveSale } from '@/lib/saleUtils';
 import { useLocation } from 'wouter';
 import { format as formatDate, parseISO, subDays, startOfWeek, startOfMonth } from 'date-fns';
 import {
@@ -241,10 +242,15 @@ export default function SalesList() {
   }, [paymentFilteredSales, debouncedQuery]);
 
   // ── 5. Summary stats for the current filtered view ────────────────────────
-  const stats = useMemo(() => ({
-    count: filteredSales.length,
-    revenue: filteredSales.reduce((s, sale) => s + sale.grandTotal, 0),
-  }), [filteredSales]);
+  // Exclude voided sales from revenue/count stats so numbers are accurate
+  const stats = useMemo(() => {
+    const active = filteredSales.filter(isActiveSale);
+    return {
+      count: active.length,
+      revenue: active.reduce((s, sale) => s + sale.grandTotal, 0),
+      totalWithVoided: filteredSales.length,
+    };
+  }, [filteredSales]);
 
   // ── 6. Visible slice + grouping ───────────────────────────────────────────
   const visibleSales = useMemo(
@@ -570,18 +576,21 @@ function SaleRow({ sale, serialNo, showSerial, format, onClick, onPrint }: SaleR
 
   const invoiceId = `INV-${sale.id.slice(-6).toUpperCase()}`;
 
+  const isVoided = sale.status === 'voided';
+
   return (
     <div
       role="button"
       tabIndex={0}
       onClick={onClick}
       onKeyDown={e => e.key === 'Enter' && onClick()}
-      className="
+      className={`
         group flex items-center gap-3 rounded-2xl border border-border/70 bg-card
         p-3.5 sm:p-4 cursor-pointer shadow-xs
         hover:border-primary/40 hover:bg-muted/30 active:scale-[0.98]
         transition-all duration-150 select-none
-      "
+        ${isVoided ? 'opacity-50' : ''}
+      `}
     >
       {/* Serial number */}
       {showSerial && (
@@ -599,6 +608,11 @@ function SaleRow({ sale, serialNo, showSerial, format, onClick, onPrint }: SaleR
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-2 flex-wrap">
           <span className="font-bold text-sm text-foreground tracking-tight">{invoiceId}</span>
+          {isVoided && (
+            <Badge variant="destructive" className="text-[9px] px-1.5 py-0 h-4 uppercase font-bold tracking-wider">
+              Voided
+            </Badge>
+          )}
           {sale.customerName ? (
             <span className="text-xs text-muted-foreground truncate max-w-[140px] font-medium">
               · {sale.customerName}
@@ -636,19 +650,21 @@ function SaleRow({ sale, serialNo, showSerial, format, onClick, onPrint }: SaleR
           )}
         </div>
 
-        {/* Print button */}
-        <button
-          type="button"
-          aria-label="Print receipt"
-          onClick={e => onPrint(e, sale)}
-          className="
-            size-8.5 rounded-xl flex items-center justify-center
-            text-muted-foreground hover:text-foreground hover:bg-muted/70
-            border border-border/60 active:scale-90 transition-all shrink-0
-          "
-        >
-          <Printer className="size-4" />
-        </button>
+        {/* Print button — hidden for voided sales */}
+        {!isVoided && (
+          <button
+            type="button"
+            aria-label="Print receipt"
+            onClick={e => onPrint(e, sale)}
+            className="
+              size-8.5 rounded-xl flex items-center justify-center
+              text-muted-foreground hover:text-foreground hover:bg-muted/70
+              border border-border/60 active:scale-90 transition-all shrink-0
+            "
+          >
+            <Printer className="size-4" />
+          </button>
+        )}
       </div>
     </div>
   );
