@@ -36,6 +36,8 @@ export function LicenseBanner() {
         case 'expired':
         case 'trial_expired':
           return 'Your access has expired. Please activate a valid license key.';
+        case 'offline_expired':
+          return 'License verification overdue. Please connect to the internet.';
         case 'invalid':
           return 'License verification failed (invalid signature).';
         default:
@@ -51,7 +53,7 @@ export function LicenseBanner() {
           onClick={() => setLocation('/settings?tab=license')}
           className="inline-flex items-center gap-0.5 bg-white text-destructive hover:bg-white/90 active:bg-white/80 px-2.5 py-0.5 rounded-full transition-all ml-2 shadow-sm"
         >
-          Activate License <ArrowRight className="h-3 w-3" />
+          {state.status === 'offline_expired' ? 'View Status' : 'Activate License'} <ArrowRight className="h-3 w-3" />
         </button>
       </div>
     );

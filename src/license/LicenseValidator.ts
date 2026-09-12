@@ -10,7 +10,8 @@
  *
  * Feature permission model:
  *   During `trial`, `active`, `grace` → all modules in license.enabledModules allowed.
- *   During `expired`, `suspended`, `invalid`, `none`, `trial_expired` → all locked.
+ *   During `expired`, `suspended`, `invalid`, `none`, `trial_expired`,
+ *         `offline_expired` → all locked.
  *
  *   The system evaluates the module identifier string against the array.
  *   There is no plan name logic, no hardcoded feature names.
@@ -20,6 +21,8 @@ import { StoredLicense, LicenseStatus, TrialInfo, LicenseState } from './types';
 import {
   TRIAL_DURATION_DAYS,
   DEFAULT_GRACE_PERIOD_DAYS,
+  MAX_OFFLINE_DAYS,
+  MAX_CLOCK_DRIFT_HOURS,
   ALL_MODULES,
 } from './constants';
 
@@ -35,6 +38,13 @@ export function daysBetween(fromISO: string, toISO: string): number {
   const from = new Date(fromISO).getTime();
   const to   = new Date(toISO).getTime();
   return Math.floor((to - from) / (1000 * 60 * 60 * 24));
+}
+
+/** Computes the number of hours between two ISO timestamps. Negative = past. */
+export function hoursBetween(fromISO: string, toISO: string): number {
+  const from = new Date(fromISO).getTime();
+  const to   = new Date(toISO).getTime();
+  return (to - from) / (1000 * 60 * 60);
 }
 
 /** Adds `days` to an ISO timestamp and returns the new ISO string. */
@@ -61,6 +71,51 @@ export function computeTrialInfo(trialStart: string | null): TrialInfo | null {
   return { isActive, startedAt: trialStart, expiresAt, daysRemaining };
 }
 
+// ─── Offline Enforcement ──────────────────────────────────────────────────────
+
+/**
+ * Returns true if the license has not been verified by the server for
+ * longer than the allowed offline window.
+ *
+ * This prevents "go offline forever" abuse — after MAX_OFFLINE_DAYS without
+ * a successful server check, the license is no longer trusted.
+ *
+ * @param lastVerifiedAt - ISO 8601 timestamp of last successful verification
+ * @param maxDays        - Maximum allowed offline days (default: MAX_OFFLINE_DAYS)
+ */
+export function isOfflineTooLong(
+  lastVerifiedAt: string | null,
+  maxDays: number = MAX_OFFLINE_DAYS,
+): boolean {
+  if (!lastVerifiedAt) return true; // Never verified = treated as offline too long
+  const daysSince = daysBetween(lastVerifiedAt, nowISO());
+  return daysSince >= maxDays;
+}
+
+// ─── Clock Manipulation Detection ─────────────────────────────────────────────
+
+/**
+ * Returns true if the system clock appears to have been rolled back.
+ *
+ * Detection: if `now` is MORE than `maxDriftHours` BEFORE a previously
+ * recorded timestamp, the clock has been manipulated.
+ *
+ * A small tolerance (MAX_CLOCK_DRIFT_HOURS) accounts for timezone changes,
+ * NTP corrections, and DST transitions.
+ *
+ * @param lastKnownTimestamp - ISO 8601 of the last recorded system time
+ * @param maxDriftHours      - Tolerance threshold in hours
+ */
+export function isClockRolledBack(
+  lastKnownTimestamp: string | null,
+  maxDriftHours: number = MAX_CLOCK_DRIFT_HOURS,
+): boolean {
+  if (!lastKnownTimestamp) return false; // No baseline → can't detect
+  const drift = hoursBetween(nowISO(), lastKnownTimestamp);
+  // drift > 0 means lastKnown is in the future relative to now → clock went back
+  return drift > maxDriftHours;
+}
+
 // ─── Status Computation ───────────────────────────────────────────────────────
 
 /**
@@ -69,12 +124,14 @@ export function computeTrialInfo(trialStart: string | null): TrialInfo | null {
  * Evaluation order (highest to lowest priority):
  *   1. Suspended (server-reported; cannot be overridden locally)
  *   2. Invalid (signature mismatch detected by LicenseService before this call)
- *   3. Active (not expired)
- *   4. Grace period (expired but within grace window)
- *   5. Expired (past grace period)
- *   6. Trial (no license but trial is active)
- *   7. Trial expired
- *   8. None
+ *   3. Clock rollback detected → 'invalid'
+ *   4. Offline too long (no server verification within MAX_OFFLINE_DAYS) → 'offline_expired'
+ *   5. Active (not expired)
+ *   6. Grace period (expired but within grace window)
+ *   7. Expired (past grace period)
+ *   8. Trial (no license but trial is active)
+ *   9. Trial expired
+ *  10. None
  *
  * NOTE: Signature verification is intentionally NOT performed here because it
  * is async. LicenseService runs the async verify first, then passes the result
@@ -84,6 +141,7 @@ export function computeLicenseStatus(
   license: StoredLicense | null,
   trialStart: string | null,
   signatureValid: boolean,
+  lastKnownTimestamp?: string | null,
 ): LicenseStatus {
   // ── No license stored ───────────────────────────────────────────────────
   if (!license) {
@@ -97,6 +155,16 @@ export function computeLicenseStatus(
 
   // ── Tamper detected ─────────────────────────────────────────────────────
   if (!signatureValid) return 'invalid';
+
+  // ── Clock rollback detected ─────────────────────────────────────────────
+  if (lastKnownTimestamp && isClockRolledBack(lastKnownTimestamp)) {
+    return 'invalid';
+  }
+
+  // ── Offline too long ────────────────────────────────────────────────────
+  if (isOfflineTooLong(license.lastVerifiedAt)) {
+    return 'offline_expired';
+  }
 
   const now = nowISO();
 
@@ -132,7 +200,7 @@ export function isLicenseUsable(status: LicenseStatus): boolean {
  *   `enabledModules`, the feature is allowed.
  * - During trial: ALL modules are allowed (full feature trial).
  * - During grace: modules allowed as per the stored license (no lockout).
- * - During expired/suspended/invalid/none/trial_expired: nothing is allowed.
+ * - During expired/suspended/invalid/none/trial_expired/offline_expired: nothing is allowed.
  *
  * The function takes a flat module ID string (e.g. "inventory.batches")
  * and compares against the `enabledModules` array. No plan names are evaluated.
@@ -198,8 +266,9 @@ export function buildLicenseState(
   trialStart: string | null,
   signatureValid: boolean,
   isLoading: boolean = false,
+  lastKnownTimestamp?: string | null,
 ): LicenseState {
-  const status      = computeLicenseStatus(license, trialStart, signatureValid);
+  const status      = computeLicenseStatus(license, trialStart, signatureValid, lastKnownTimestamp);
   const trial       = computeTrialInfo(trialStart);
   const expiry      = license?.expiresAt ?? null;
   const daysLeft    = daysUntilExpiry(license);
@@ -209,10 +278,11 @@ export function buildLicenseState(
     license,
     trial,
     isLoading,
-    isUsable:      isLicenseUsable(status),
-    hasAnyLicense: license !== null,
-    expiresAt:     expiry,
+    isUsable:        isLicenseUsable(status),
+    hasAnyLicense:   license !== null,
+    expiresAt:       expiry,
     daysUntilExpiry: daysLeft,
+    lastVerifiedAt:  license?.lastVerifiedAt ?? null,
   };
 }
 

@@ -67,6 +67,8 @@ export function ActivationBlocker() {
       case 'expired':
       case 'trial_expired':
         return 'Your trial period or license has expired. Please activate Sohan POS to resume using the application.';
+      case 'offline_expired':
+        return 'License verification is overdue. Please connect to the internet to re-verify your license, or enter a new activation key.';
       case 'invalid':
         return 'License cryptographic verification failed. Enter a valid activation key.';
       default:

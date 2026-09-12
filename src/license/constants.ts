@@ -47,6 +47,30 @@ export const DEFAULT_GRACE_PERIOD_DAYS = 7;
  */
 export const VERIFY_INTERVAL_DAYS = 3;
 
+/**
+ * Maximum number of days the app can operate without a successful
+ * server-side license verification. After this threshold, the license
+ * is downgraded to `offline_expired` to prevent "go offline forever" abuse.
+ */
+export const MAX_OFFLINE_DAYS = 30;
+
+/**
+ * How often (in hours) the in-app heartbeat timer fires to trigger a
+ * silent background re-verification while the app is running.
+ */
+export const HEARTBEAT_INTERVAL_HOURS = 4;
+
+/**
+ * Maximum tolerated clock drift in hours.
+ * If the current system time is more than this many hours BEFORE
+ * the last-known timestamp, the system flags it as clock manipulation
+ * and marks the license `invalid`.
+ */
+export const MAX_CLOCK_DRIFT_HOURS = 2;
+
+/** localStorage key for the last-known system timestamp (clock-drift detection). */
+export const LAST_KNOWN_TIMESTAMP_KEY = 'sohan_last_ts';
+
 // ─── Module Identifiers ───────────────────────────────────────────────────────
 
 /**

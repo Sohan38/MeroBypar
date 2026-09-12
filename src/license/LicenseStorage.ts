@@ -18,6 +18,7 @@ import {
   LICENSE_STORAGE_KEY,
   TRIAL_INSTALL_KEY,
   LICENSE_SCHEMA_VERSION,
+  LAST_KNOWN_TIMESTAMP_KEY,
 } from './constants';
 
 // ─── Migration Registry ───────────────────────────────────────────────────────
@@ -143,6 +144,32 @@ export class LicenseStorage {
       localStorage.removeItem(TRIAL_INSTALL_KEY);
     } catch (err) {
       console.error('[LicenseStorage] Failed to clear trial start:', err);
+    }
+  }
+
+  // ── Clock-Drift Detection ─────────────────────────────────────────────────
+
+  /**
+   * Returns the last-known system timestamp (ISO 8601).
+   * Used to detect if the user has rolled back the system clock.
+   */
+  getLastKnownTimestamp(): string | null {
+    try {
+      return localStorage.getItem(LAST_KNOWN_TIMESTAMP_KEY);
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Records the current system timestamp.
+   * Called on every successful license operation (init, verify, activate).
+   */
+  setLastKnownTimestamp(isoDate: string): void {
+    try {
+      localStorage.setItem(LAST_KNOWN_TIMESTAMP_KEY, isoDate);
+    } catch (err) {
+      console.error('[LicenseStorage] Failed to set last known timestamp:', err);
     }
   }
 

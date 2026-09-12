@@ -19,17 +19,19 @@
  *   install → trial → trial_expired → (activate) → active
  *                                                 → expired → grace → expired
  *                                                 → suspended
+ *                                                 → offline_expired
  *   tamper / corrupt → invalid
  */
 export type LicenseStatus =
-  | 'none'           // No license and no trial start recorded
-  | 'trial'          // Within the trial period, no activation key required
-  | 'trial_expired'  // Trial window has passed; activation required
-  | 'active'         // Valid, non-expired, signature-verified license
-  | 'grace'          // License past expiry but within grace period
-  | 'expired'        // License past expiry AND past grace period
-  | 'suspended'      // Manually revoked by the license server
-  | 'invalid';       // Signature check failed or data corrupted
+  | 'none'              // No license and no trial start recorded
+  | 'trial'             // Within the trial period, no activation key required
+  | 'trial_expired'     // Trial window has passed; activation required
+  | 'active'            // Valid, non-expired, signature-verified license
+  | 'grace'             // License past expiry but within grace period
+  | 'expired'           // License past expiry AND past grace period
+  | 'suspended'         // Manually revoked by the license server
+  | 'offline_expired'   // Too many days without successful server verification
+  | 'invalid';          // Signature check failed or data corrupted / clock tampering
 
 // ─── Core License Model ───────────────────────────────────────────────────────
 
@@ -167,6 +169,9 @@ export interface LicenseState {
 
   /** Days until expiry, or null if not applicable. Negative means past expiry. */
   daysUntilExpiry: number | null;
+
+  /** ISO 8601 timestamp of the last successful server verification, or null. */
+  lastVerifiedAt: string | null;
 }
 
 // ─── Activation Request / Response ───────────────────────────────────────────
