@@ -18,17 +18,19 @@
  */
 
 import React, { createContext, useContext, useState, useEffect, useCallback, useRef } from 'react';
-import { LicenseState, ActivationResponse, DeactivationResponse } from './types';
+import { LicenseState, ActivationResponse, DeactivationResponse, SyncResult } from './types';
 import { licenseService } from './LicenseService';
 import { isDomainFeatureAllowed } from './LicenseValidator';
 import { HEARTBEAT_INTERVAL_HOURS } from './constants';
 import { useApp } from '@/contexts/AppContext';
+import { toast } from 'sonner';
 
 interface LicenseContextType {
   state: LicenseState;
   activate: (key: string) => Promise<ActivationResponse>;
   deactivate: () => Promise<DeactivationResponse>;
   refresh: () => Promise<void>;
+  syncLicense: (force?: boolean, notify?: boolean) => Promise<SyncResult>;
   checkFeature: (domain: string, flag: string) => boolean;
 }
 
@@ -38,13 +40,22 @@ export function LicenseProvider({ children }: { children: React.ReactNode }) {
   const [state, setState] = useState<LicenseState>(licenseService.getState());
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // ── Sync with Server ──────────────────────────────────────────────────
+  const syncLicense = useCallback(async (force: boolean = false, notify: boolean = true): Promise<SyncResult> => {
+    const res = await licenseService.syncWithServer(force);
+    setState(licenseService.getState());
+
+    if (res.updated && res.message && notify) {
+      toast.info(res.message, { duration: 5000 });
+    }
+
+    return res;
+  }, []);
+
   // ── Refresh helper (shared by heartbeat, visibility, online) ──────────
   const silentRefresh = useCallback(async () => {
-    const refreshedState = await licenseService.refreshIfNeeded();
-    if (refreshedState) {
-      setState(refreshedState);
-    }
-  }, []);
+    await syncLicense(false, true);
+  }, [syncLicense]);
 
   // ── Initialization ────────────────────────────────────────────────────
   const init = useCallback(async () => {
@@ -131,7 +142,7 @@ export function LicenseProvider({ children }: { children: React.ReactNode }) {
   }, [state.license, state.status]);
 
   return (
-    <LicenseContext.Provider value={{ state, activate, deactivate, refresh, checkFeature }}>
+    <LicenseContext.Provider value={{ state, activate, deactivate, refresh, syncLicense, checkFeature }}>
       {children}
     </LicenseContext.Provider>
   );

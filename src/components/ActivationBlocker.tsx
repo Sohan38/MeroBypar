@@ -10,10 +10,11 @@ import { ACTIVATION_ERROR_MESSAGES } from '@/license/constants';
 import { toast } from 'sonner';
 
 export function ActivationBlocker() {
-  const { state, activate } = useLicense();
+  const { state, activate, syncLicense } = useLicense();
   const [, setLocation] = useLocation();
   const [keyInput, setKeyInput] = useState('');
   const [isActivating, setIsActivating] = useState(false);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [activationError, setActivationError] = useState<{ message: string; code?: string } | null>(null);
 
   // Render nothing if the workspace is usable.
@@ -32,6 +33,26 @@ export function ActivationBlocker() {
       </div>
     );
   }
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await syncLicense(true, false);
+      if (res.success) {
+        if (res.updated && res.message) {
+          toast.success(res.message);
+        } else {
+          toast.info(res.message || 'License verified successfully.');
+        }
+      } else {
+        toast.error(res.error || 'Verification failed.');
+      }
+    } catch {
+      toast.error('Network error. Unable to contact license server.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   const handleActivate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -91,6 +112,27 @@ export function ActivationBlocker() {
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
+          {state.license && (
+            <div className="p-3 bg-muted/60 rounded-lg border border-border flex items-center justify-between gap-3 text-xs">
+              <div className="min-w-0">
+                <span className="font-semibold block truncate">{state.license.businessName}</span>
+                <span className="text-muted-foreground text-[11px] block">
+                  {state.status === 'offline_expired' ? 'Offline check overdue' : `Status: ${state.status}`}
+                </span>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="shrink-0 h-8 text-xs flex items-center gap-1.5"
+                disabled={isSyncing}
+                onClick={handleSync}
+              >
+                <RefreshCw className={`h-3 w-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                {isSyncing ? 'Checking...' : 'Re-verify'}
+              </Button>
+            </div>
+          )}
+
           <form onSubmit={handleActivate} className="space-y-4">
             <div className="space-y-2">
               <label htmlFor="blocker-license-key" className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">

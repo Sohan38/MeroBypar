@@ -43,7 +43,7 @@ const MODULE_DISPLAY_NAMES: Record<string, { name: string; description: string; 
 };
 
 export default function LicenseCard() {
-  const { state, activate, deactivate } = useLicense();
+  const { state, activate, deactivate, syncLicense } = useLicense();
   const [keyInput, setKeyInput] = useState('');
   const [isActivating, setIsActivating] = useState(false);
   const [isDeactivating, setIsDeactivating] = useState(false);
@@ -112,6 +112,28 @@ export default function LicenseCard() {
     }
   };
 
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSyncLicense = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await syncLicense(true, false);
+      if (res.success) {
+        if (res.updated && res.message) {
+          toast.success(res.message);
+        } else {
+          toast.info(res.message || 'License is up to date.');
+        }
+      } else {
+        toast.error(res.error || 'Failed to sync license with server.');
+      }
+    } catch (err) {
+      toast.error('Network error. Unable to contact license server.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
   const formatISO = (isoString: string | null) => {
     if (!isoString) return 'Never';
     return new Date(isoString).toLocaleDateString(undefined, {
@@ -152,13 +174,17 @@ export default function LicenseCard() {
           </div>
         )}
 
-        {(state.status === 'expired' || state.status === 'trial_expired' || state.status === 'suspended') && (
+        {(state.status === 'expired' || state.status === 'trial_expired' || state.status === 'suspended' || state.status === 'offline_expired') && (
           <div className="rounded-lg bg-red-50/50 dark:bg-red-950/20 border border-red-100 dark:border-red-900/50 p-4 flex gap-3 items-start">
             <ShieldAlert className="h-5 w-5 text-red-500 mt-0.5 shrink-0" />
             <div>
-              <h4 className="font-semibold text-sm text-red-800 dark:text-red-300">Activation Required</h4>
+              <h4 className="font-semibold text-sm text-red-800 dark:text-red-300">
+                {state.status === 'offline_expired' ? 'Verification Required' : 'Activation Required'}
+              </h4>
               <p className="text-xs text-red-700 dark:text-red-400 mt-0.5">
-                Your access has expired or been suspended. Please enter a valid activation key below to unlock your workspace.
+                {state.status === 'offline_expired'
+                  ? 'Your license requires online verification. Please connect to the internet and click Sync License.'
+                  : 'Your access has expired or been suspended. Please enter a valid activation key below to unlock your workspace.'}
               </p>
             </div>
           </div>
@@ -199,8 +225,20 @@ export default function LicenseCard() {
                 </code>
               </div>
             </div>
-            <div className="md:col-span-2 pt-2 border-t border-border flex justify-between items-center text-xs text-muted-foreground">
-              <span>Last verified: {formatISO(state.license.lastVerifiedAt)}</span>
+            <div className="md:col-span-2 pt-2 border-t border-border flex flex-wrap justify-between items-center gap-2 text-xs text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <span>Last verified: {formatISO(state.license.lastVerifiedAt)}</span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-7 px-2.5 text-xs flex items-center gap-1.5 border-border hover:bg-accent"
+                  disabled={isSyncing}
+                  onClick={handleSyncLicense}
+                >
+                  <RefreshCw className={`h-3 w-3 ${isSyncing ? 'animate-spin' : ''}`} />
+                  {isSyncing ? 'Syncing...' : 'Sync License'}
+                </Button>
+              </div>
               <Button
                 variant="link"
                 className="h-auto p-0 text-destructive text-xs hover:no-underline"

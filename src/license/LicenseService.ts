@@ -11,7 +11,7 @@
  * - Deactivation is local-only — the backend has no per-device revocation flow yet.
  */
 
-import { StoredLicense, LicenseState, ActivationResponse, DeactivationResponse } from './types';
+import { StoredLicense, LicenseState, ActivationResponse, DeactivationResponse, SyncResult } from './types';
 import { VERIFY_INTERVAL_DAYS } from './constants';
 import { deviceService } from './DeviceService';
 import { signatureService } from './SignatureService';
@@ -214,101 +214,217 @@ export class LicenseService {
   }
 
   /**
-   * Silent background server verification.
+   * Synchronizes the license with the backend server.
    *
-   * Calls POST /license/verify with { licenseId, deviceId }.
-   * On success: updates lastVerifiedAt and syncs any server-side status changes.
-   * On suspended response: immediately downgrades the license.
-   * On network failure: silently continues — offline grace period handles this.
+   * Industry-Grade Architecture:
+   * 1. Atomic Re-lease: The server returns a signed payload. We verify the cryptographic
+   *    signature *before* touching storage. If signature verification fails, existing
+   *    working cache is preserved without corruption.
+   * 2. Monotonic Rollback Defense: Incoming server payload must have an issuedAt >= the
+   *    currently stored license issuedAt. Any older replay responses are discarded.
+   * 3. Change Detection: Accurately detects:
+   *    - Expiry extended or changed
+   *    - Plan upgraded or downgraded
+   *    - Modules unlocked (added)
+   *    - Modules revoked (removed)
+   * 4. Error Handling: Handles specific error codes like DEVICE_NOT_AUTHORIZED and
+   *    LICENSE_SUSPENDED cleanly without crashing or corrupting state.
    *
-   * This is called:
-   *   1. Once at app boot (via LicenseContext init)
-   *   2. Periodically by the heartbeat interval (every HEARTBEAT_INTERVAL_HOURS)
-   *   3. On tab/app visibility change (returning from background)
-   *   4. On network reconnection (online event)
+   * @param force - If true, bypasses verify interval checks (used for on-demand user sync)
    */
-  async refreshIfNeeded(): Promise<LicenseState | null> {
-    if (this._isRefreshing) return null;
+  async syncWithServer(force: boolean = false): Promise<SyncResult> {
+    if (this._isRefreshing) {
+      return { success: false, updated: false, error: 'Verification check already in progress.' };
+    }
+
     const current = this.getState();
-    if (!current.license) return null;
+    if (!current.license) {
+      return { success: false, updated: false, error: 'No active license found to verify.' };
+    }
 
-    // Skip if status is terminal and non-recoverable locally
-    if (current.status === 'invalid') return null;
+    // Skip if status is permanently invalid and unrecoverable
+    if (current.status === 'invalid' && !force) {
+      return { success: false, updated: false, error: 'License is marked invalid.' };
+    }
 
-    // For offline_expired, we MUST try to verify (that's the only way to recover)
     const isOfflineExpired = current.status === 'offline_expired';
+    const isSuspended = current.status === 'suspended';
+    const daysLeft = current.daysUntilExpiry;
+    const isNearExpiry = daysLeft !== null && daysLeft <= 7;
+    const isGrace = current.status === 'grace';
 
-    // For active/grace, only verify if the interval has elapsed
-    if (!isOfflineExpired && current.status !== 'suspended') {
+    // Interval check: bypass if forced, offline-expired, suspended, in grace, or near expiry
+    if (!force && !isOfflineExpired && !isSuspended && !isGrace && !isNearExpiry) {
       if (!needsServerVerification(current.license, VERIFY_INTERVAL_DAYS)) {
-        return null;
+        return { success: true, updated: false, message: 'License verified recently.' };
       }
     }
 
     this._isRefreshing = true;
-    try {
-      /**
-       * Backend verify response shape.
-       * The server checks license + subscription status and upserts the device.
-       */
-      interface ServerVerifyResponse {
-        success: boolean;
-        data?: {
-          status?: string;
-          expiresAt?: string | null;
-          entitlements?: Record<string, boolean>;
-          gracePeriodDays?: number;
-        };
-        error?: string;
-      }
 
-      const resData = await apiClient.post<ServerVerifyResponse>('/license/verify', {
+    interface ServerVerifySuccessResponse {
+      success: boolean;
+      data?: {
+        payload: {
+          version: number;
+          licenseId: string;
+          businessName: string;
+          plan: string;
+          expiresAt: string | null;
+          gracePeriodDays: number;
+          entitlements: Record<string, boolean | number>;
+          authorizedDevices: string[];
+          issuedAt: string;
+          metadata?: Record<string, unknown>;
+        };
+        signature: string;
+      };
+      errors?: Array<{ code: string; message: string }>;
+      meta?: { timestamp?: string; apiVersion?: string };
+    }
+
+    try {
+      const resData = await apiClient.post<ServerVerifySuccessResponse>('/license/verify', {
         licenseId: current.license.licenseId,
         deviceId: deviceService.getDeviceId(),
       });
 
       const now = nowISO();
 
-      if (resData.success) {
-        // Build the patch from server response
-        const patch: Partial<StoredLicense> = {
-          lastVerifiedAt: now,
-        };
+      // Handle server success
+      if (resData.success && resData.data?.payload && resData.data?.signature) {
+        const { payload, signature } = resData.data;
 
-        // Sync server-reported status if provided
-        if (resData.data?.status) {
-          const serverStatus = resData.data.status;
-          if (serverStatus === 'suspended') {
-            patch.status = 'suspended';
-          } else if (serverStatus === 'expired') {
-            patch.status = 'expired';
-          } else if (serverStatus === 'active') {
-            patch.status = 'active';
+        // Monotonic check: Reject replayed or stale payloads
+        if (current.license.issuedAt && payload.issuedAt) {
+          const currentTime = new Date(current.license.issuedAt).getTime();
+          const incomingTime = new Date(payload.issuedAt).getTime();
+          if (incomingTime < currentTime) {
+            console.warn('[LicenseService] Incoming server payload has older issuedAt than local cache — rejected.');
+            return {
+              success: false,
+              updated: false,
+              error: 'Server returned outdated license issuance data.'
+            };
           }
         }
 
-        // Sync updated expiry if provided
-        if (resData.data?.expiresAt !== undefined) {
-          patch.expiresAt = resData.data.expiresAt;
+        // Map enabled modules (entitlements with true value)
+        const incomingModules = Object.keys(payload.entitlements || {}).filter(
+          (modId) => payload.entitlements[modId] === true
+        );
+
+        // Build candidate StoredLicense
+        const candidateLicense: StoredLicense = {
+          version: payload.version || current.license.version || 1,
+          licenseId: payload.licenseId || current.license.licenseId,
+          activationKey: current.license.activationKey,
+          businessName: payload.businessName || current.license.businessName,
+          plan: payload.plan || current.license.plan,
+          enabledModules: incomingModules,
+          deviceId: current.license.deviceId,
+          activatedAt: current.license.activatedAt,
+          issuedAt: payload.issuedAt || current.license.issuedAt || now,
+          expiresAt: payload.expiresAt ?? null,
+          gracePeriodDays: typeof payload.gracePeriodDays === 'number' ? payload.gracePeriodDays : current.license.gracePeriodDays,
+          lastVerifiedAt: now,
+          status: 'active',
+          signature: signature,
+          metadata: payload.metadata || current.license.metadata || {},
+        };
+
+        // Cryptographic signature check on candidate before writing to storage
+        const isSignatureValid = await signatureService.verify(candidateLicense);
+        if (!isSignatureValid) {
+          console.error('[LicenseService] Server payload signature verification failed. Preserving local cache.');
+          return {
+            success: false,
+            updated: false,
+            error: 'Cryptographic signature validation failed on updated license payload.'
+          };
         }
 
-        // Sync updated grace period if provided
-        if (typeof resData.data?.gracePeriodDays === 'number') {
-          patch.gracePeriodDays = resData.data.gracePeriodDays;
-        }
+        // Detect meaningful changes between current and candidate
+        const oldExpiresAt = current.license.expiresAt;
+        const newExpiresAt = candidateLicense.expiresAt;
+        const expiryExtended =
+          Boolean(oldExpiresAt && newExpiresAt && new Date(newExpiresAt).getTime() > new Date(oldExpiresAt).getTime()) ||
+          Boolean(oldExpiresAt && !newExpiresAt); // changed to perpetual
 
-        // Sync updated entitlements if provided
-        if (resData.data?.entitlements) {
-          patch.enabledModules = Object.keys(resData.data.entitlements).filter(
-            (modId) => resData.data!.entitlements![modId] === true
-          );
-        }
+        const oldPlan = current.license.plan;
+        const newPlan = candidateLicense.plan;
+        const planChanged = oldPlan !== newPlan;
 
-        const updated = licenseStorage.patchLicense(patch);
+        const currentModulesSet = new Set(current.license.enabledModules);
+        const incomingModulesSet = new Set(candidateLicense.enabledModules);
 
-        // Update clock-drift baseline on successful verification
+        const modulesAdded = candidateLicense.enabledModules.filter((m) => !currentModulesSet.has(m));
+        const modulesRemoved = current.license.enabledModules.filter((m) => !incomingModulesSet.has(m));
+        const modulesChanged = modulesAdded.length > 0 || modulesRemoved.length > 0;
+
+        const hasSubstantiveChanges =
+          expiryExtended ||
+          planChanged ||
+          modulesChanged ||
+          oldExpiresAt !== newExpiresAt ||
+          current.status !== 'active';
+
+        // Atomically replace cached license
+        licenseStorage.saveLicense(candidateLicense);
         licenseStorage.setLastKnownTimestamp(now);
 
+        const lastKnownTimestamp = licenseStorage.getLastKnownTimestamp();
+        this._cachedState = buildLicenseState(
+          candidateLicense,
+          licenseStorage.getTrialStart(),
+          true,
+          false,
+          lastKnownTimestamp
+        );
+
+        // Build human-friendly notification message
+        let changeMessage = 'License is up to date.';
+        if (expiryExtended) {
+          const dateStr = newExpiresAt ? new Date(newExpiresAt).toLocaleDateString() : 'Perpetual';
+          changeMessage = `License renewed: Expiration extended to ${dateStr}.`;
+        } else if (planChanged) {
+          changeMessage = `Plan updated to ${newPlan}.`;
+        } else if (modulesAdded.length > 0 && modulesRemoved.length > 0) {
+          changeMessage = `License features updated (+${modulesAdded.length} added, -${modulesRemoved.length} removed).`;
+        } else if (modulesAdded.length > 0) {
+          changeMessage = `New features unlocked (+${modulesAdded.length} module${modulesAdded.length > 1 ? 's' : ''}).`;
+        } else if (modulesRemoved.length > 0) {
+          changeMessage = `License features updated (-${modulesRemoved.length} module${modulesRemoved.length > 1 ? 's' : ''} removed).`;
+        } else if (hasSubstantiveChanges) {
+          changeMessage = 'License terms updated successfully.';
+        }
+
+        return {
+          success: true,
+          updated: hasSubstantiveChanges,
+          message: changeMessage,
+          changes: {
+            expiryExtended,
+            oldExpiresAt,
+            newExpiresAt,
+            planChanged,
+            oldPlan,
+            newPlan,
+            modulesAdded,
+            modulesRemoved,
+          },
+        };
+      }
+
+      // Handle unsuccessful backend response
+      const firstError = resData.errors?.[0];
+      const errorCode = firstError?.code || 'VERIFICATION_REJECTED';
+      const errorMessage = firstError?.message || 'Server rejected license verification.';
+
+      console.warn('[LicenseService] Server verification error response:', errorCode, errorMessage);
+
+      if (errorCode === 'DEVICE_NOT_AUTHORIZED' || errorCode === 'LICENSE_SUSPENDED') {
+        const updated = licenseStorage.patchLicense({ status: 'suspended' });
         if (updated) {
           const lastKnownTimestamp = licenseStorage.getLastKnownTimestamp();
           this._cachedState = buildLicenseState(
@@ -316,30 +432,60 @@ export class LicenseService {
             licenseStorage.getTrialStart(),
             true,
             false,
-            lastKnownTimestamp,
+            lastKnownTimestamp
           );
         }
-      } else {
-        // Server explicitly rejected the verification
-        console.warn('[LicenseService] Server verification rejected:', resData.error);
+      }
 
-        // If the server says the license is no longer valid, update local state
-        // but don't wipe the license — user might still be within grace period
-      }
+      return {
+        success: false,
+        updated: false,
+        error: errorMessage,
+      };
     } catch (err) {
-      if (err instanceof ApiError && err.status > 0) {
-        // Server responded with an HTTP error (not a network issue)
-        console.warn('[LicenseService] Server verification failed with status:', err.status, err.message);
-      } else {
-        // Network error — silently continue, offline grace handles this
-        console.info('[LicenseService] Silent verification skipped (offline).');
+      if (err instanceof ApiError) {
+        console.warn('[LicenseService] Server verification failed:', err.status, err.message);
+        if (err.errorCode === 'DEVICE_NOT_AUTHORIZED' || err.errorCode === 'LICENSE_SUSPENDED') {
+          const updated = licenseStorage.patchLicense({ status: 'suspended' });
+          if (updated) {
+            const lastKnownTimestamp = licenseStorage.getLastKnownTimestamp();
+            this._cachedState = buildLicenseState(
+              updated,
+              licenseStorage.getTrialStart(),
+              true,
+              false,
+              lastKnownTimestamp
+            );
+          }
+        }
+        return {
+          success: false,
+          updated: false,
+          error: err.message,
+        };
       }
+
+      // Network unreachable
+      console.info('[LicenseService] Silent verification skipped (offline).');
+      return {
+        success: false,
+        updated: false,
+        error: 'Network error or server unreachable. Operating in offline mode.',
+      };
     } finally {
       this._isRefreshing = false;
     }
+  }
 
-    return this._cachedState;
+  /**
+   * Silent background server verification helper.
+   * Calls syncWithServer(false) and returns the updated state if available.
+   */
+  async refreshIfNeeded(): Promise<LicenseState | null> {
+    await this.syncWithServer(false);
+    return this.getState();
   }
 }
 
 export const licenseService = new LicenseService();
+

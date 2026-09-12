@@ -214,7 +214,7 @@ export interface DeactivationResponse {
   error?: string;
 }
 
-// ─── Verification Response ────────────────────────────────────────────────────
+// ─── Verification & Sync Response ─────────────────────────────────────────────
 
 /**
  * Shape of the backend verification response (periodic online check).
@@ -223,5 +223,25 @@ export interface DeactivationResponse {
 export interface VerificationResponse {
   success: boolean;
   updatedLicense?: Partial<StoredLicense>;
+  error?: string;
+}
+
+/**
+ * Result of synchronizing license with the backend server.
+ */
+export interface SyncResult {
+  success: boolean;
+  updated: boolean;
+  message?: string;
+  changes?: {
+    expiryExtended?: boolean;
+    oldExpiresAt?: string | null;
+    newExpiresAt?: string | null;
+    planChanged?: boolean;
+    oldPlan?: string;
+    newPlan?: string;
+    modulesAdded?: string[];
+    modulesRemoved?: string[];
+  };
   error?: string;
 }

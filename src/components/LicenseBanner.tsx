@@ -1,10 +1,33 @@
+import { useState } from 'react';
 import { useLocation } from 'wouter';
 import { useLicense } from '@/license/LicenseContext';
-import { ShieldAlert, HelpCircle, ArrowRight } from 'lucide-react';
+import { ShieldAlert, HelpCircle, ArrowRight, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 
 export function LicenseBanner() {
-  const { state } = useLicense();
+  const { state, syncLicense } = useLicense();
   const [location, setLocation] = useLocation();
+  const [isSyncing, setIsSyncing] = useState(false);
+
+  const handleSync = async () => {
+    setIsSyncing(true);
+    try {
+      const res = await syncLicense(true, false);
+      if (res.success) {
+        if (res.updated && res.message) {
+          toast.success(res.message);
+        } else {
+          toast.info(res.message || 'License verified successfully.');
+        }
+      } else {
+        toast.error(res.error || 'Verification failed.');
+      }
+    } catch {
+      toast.error('Network error. Unable to contact license server.');
+    } finally {
+      setIsSyncing(false);
+    }
+  };
 
   // If the license is active, do not display the banner.
   if (state.status === 'active') {
@@ -49,12 +72,23 @@ export function LicenseBanner() {
       <div className="bg-linear-to-r from-destructive/95 via-red-600/95 to-destructive/95 text-white py-2 px-4 text-xs font-semibold flex items-center justify-center gap-2 shadow-md animate-in slide-in-from-top duration-300">
         <ShieldAlert className="h-4 w-4" />
         <span>{getStatusText()}</span>
-        <button
-          onClick={() => setLocation('/settings?tab=license')}
-          className="inline-flex items-center gap-0.5 bg-white text-destructive hover:bg-white/90 active:bg-white/80 px-2.5 py-0.5 rounded-full transition-all ml-2 shadow-sm"
-        >
-          {state.status === 'offline_expired' ? 'View Status' : 'Activate License'} <ArrowRight className="h-3 w-3" />
-        </button>
+        {state.status === 'offline_expired' ? (
+          <button
+            onClick={handleSync}
+            disabled={isSyncing}
+            className="inline-flex items-center gap-1 bg-white text-destructive hover:bg-white/90 active:bg-white/80 px-2.5 py-0.5 rounded-full transition-all ml-2 shadow-sm"
+          >
+            <RefreshCw className={`h-3 w-3 ${isSyncing ? 'animate-spin' : ''}`} />
+            {isSyncing ? 'Verifying...' : 'Re-verify'}
+          </button>
+        ) : (
+          <button
+            onClick={() => setLocation('/settings?tab=license')}
+            className="inline-flex items-center gap-0.5 bg-white text-destructive hover:bg-white/90 active:bg-white/80 px-2.5 py-0.5 rounded-full transition-all ml-2 shadow-sm"
+          >
+            Activate License <ArrowRight className="h-3 w-3" />
+          </button>
+        )}
       </div>
     );
   }
