@@ -98,4 +98,59 @@ describe('FinancialPostingService', () => {
         expect(data.financialMovements).toHaveLength(4);
         expect(data.financialMovements.slice(0, 2).map(row => row.amount)).toEqual([-1000, 1000]);
     });
+
+    it('routes bank sale to explicitly selected bankAccountId when multiple banks exist', async () => {
+        const { storage, data } = makeStorage();
+        await FinancialPostingService.ensureDefaultAccounts(storage);
+        // Add a secondary bank
+        const customBank = {
+            id: 'bank-nabil',
+            name: 'Nabil Bank Account',
+            type: 'bank',
+            status: 'active',
+            paymentMethods: ['bank'],
+        };
+        await storage.save('financialAccounts', customBank as any);
+
+        await FinancialPostingService.postSale(storage, {
+            id: 'sale-bank-1',
+            date: '2026-08-22T10:00:00.000Z',
+            grandTotal: 12000,
+            paidAmount: 12000,
+            paymentMethod: 'bank',
+            bankAccountId: 'bank-nabil',
+        });
+
+        expect(data.financialMovements).toHaveLength(1);
+        expect(data.financialMovements[0].accountId).toBe('bank-nabil');
+        expect(data.financialMovements[0].amount).toBe(12000);
+    });
+
+    it('routes customer credit settlement to explicitly selected bankAccountId', async () => {
+        const { storage, data } = makeStorage();
+        await FinancialPostingService.ensureDefaultAccounts(storage);
+        const customBank = {
+            id: 'bank-global-ime',
+            name: 'Global IME Account',
+            type: 'bank',
+            status: 'active',
+            paymentMethods: ['bank'],
+        };
+        await storage.save('financialAccounts', customBank as any);
+
+        await FinancialPostingService.postCustomerPayment(storage, {
+            id: 'cust-pmt-bank-1',
+            creditId: 'credit-100',
+            date: '2026-08-22T10:00:00.000Z',
+            amount: 4500,
+            paymentMethod: 'bank',
+            customerName: 'Sohan Shrestha',
+            bankAccountId: 'bank-global-ime',
+        });
+
+        const bankMovement = data.financialMovements.find(m => m.accountId === 'bank-global-ime');
+        expect(bankMovement).toBeDefined();
+        expect(bankMovement?.amount).toBe(4500);
+    });
 });
+

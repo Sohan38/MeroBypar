@@ -153,6 +153,7 @@ export class FinancialPostingService {
             locationId?: string | null;
             invoiceNumber?: string | null;
             customerName?: string | null;
+            bankAccountId?: string | null;
         },
         inTransaction = false,
     ) {
@@ -166,7 +167,8 @@ export class FinancialPostingService {
                 if (split.method === 'credit') {
                     movements.push({ accountId: receivablesId, amount: split.amount });
                 } else if (isAccountPaymentMethod(split.method)) {
-                    const accountId = await this.resolvePaymentAccount(storage, split.method);
+                    const explicitId = split.method === 'bank' ? sale.bankAccountId : null;
+                    const accountId = await this.resolvePaymentAccount(storage, split.method, explicitId);
                     if (!accountId) throw new Error(`No financial account configured for ${split.method}.`);
                     movements.push({ accountId, amount: split.amount });
                 }
@@ -183,7 +185,8 @@ export class FinancialPostingService {
         } else if (isAccountPaymentMethod(sale.paymentMethod)) {
             const amount = Math.min(Math.max(0, sale.paidAmount), sale.grandTotal);
             if (amount > 0) {
-                const accountId = await this.resolvePaymentAccount(storage, sale.paymentMethod);
+                const explicitId = sale.paymentMethod === 'bank' ? sale.bankAccountId : null;
+                const accountId = await this.resolvePaymentAccount(storage, sale.paymentMethod, explicitId);
                 if (!accountId) throw new Error(`No financial account configured for ${sale.paymentMethod}.`);
                 movements.push({ accountId, amount });
             }
@@ -247,9 +250,11 @@ export class FinancialPostingService {
         paymentMethod: Exclude<PaymentMethod, 'split' | 'credit'>;
         creditId: string;
         customerName?: string | null;
+        bankAccountId?: string | null;
     }) {
         await this.ensureDefaultAccounts(storage);
-        const accountId = await this.resolvePaymentAccount(storage, payment.paymentMethod);
+        const explicitId = payment.paymentMethod === 'bank' ? payment.bankAccountId : null;
+        const accountId = await this.resolvePaymentAccount(storage, payment.paymentMethod, explicitId);
         if (!accountId) throw new Error(`No financial account configured for ${payment.paymentMethod}.`);
         return this.post(storage, {
             date: payment.date,
@@ -274,9 +279,11 @@ export class FinancialPostingService {
         eventKey?: string;
         invoiceNumber?: string | null;
         supplierName?: string | null;
+        bankAccountId?: string | null;
     }) {
         await this.ensureDefaultAccounts(storage);
-        const accountId = await this.resolvePaymentAccount(storage, payment.paymentMethod);
+        const explicitId = payment.paymentMethod === 'bank' ? payment.bankAccountId : null;
+        const accountId = await this.resolvePaymentAccount(storage, payment.paymentMethod, explicitId);
         if (!accountId) throw new Error(`No financial account configured for ${payment.paymentMethod}.`);
         return this.post(storage, {
             date: payment.date,
@@ -335,6 +342,7 @@ export class FinancialPostingService {
                     eventKey: `purchase:${purchase.id}:payment:${payment.id}:v${purchase.version ?? 1}`,
                     invoiceNumber: purchase.invoiceNumber,
                     supplierName: purchase.supplierName,
+                    bankAccountId: payment.financialAccountId,
                 });
             }
             return lastResult;

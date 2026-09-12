@@ -100,6 +100,7 @@ export default function SalesPos() {
   const [discountValue, setDiscountValue] = useState(0);
   const [taxPercent, setTaxPercent] = useState(0);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string | null>(null);
   const [paidAmount, setPaidAmount] = useState<number | ''>('');
   const [customerId, setCustomerId] = useState<string>('');
   const [showCustomer, setShowCustomer] = useState(false);
@@ -545,7 +546,9 @@ export default function SalesPos() {
         items: saleItems,
         discount, tax: taxAmount, grandTotal,
         paidAmount: paidNow,
-        paymentMethod, notes: '',
+        paymentMethod,
+        bankAccountId: paymentMethod === 'bank' ? selectedBankAccountId : null,
+        notes: '',
       };
       const commitSale = async () => {
         const saved = await addSale(saleRecord);
@@ -608,6 +611,7 @@ export default function SalesPos() {
           grandTotal: saved.grandTotal,
           paidAmount: saved.paidAmount,
           paymentMethod: saved.paymentMethod,
+          bankAccountId: saved.paymentMethod === 'bank' ? selectedBankAccountId : null,
           splitPayments: saved.splitPayments,
           customerId: saved.customerId,
           customerName: saved.customerName,
@@ -649,6 +653,8 @@ export default function SalesPos() {
     grandTotal,
     paidAmount,
     paymentMethod,
+    selectedBankAccountId,
+    onSetBankAccountId: setSelectedBankAccountId,
     customerId,
     showCustomer,
     selectedCustomerName: selectedCustomer?.name,

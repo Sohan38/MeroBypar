@@ -8,6 +8,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { PaymentMethodPicker, SettlePaymentMethod } from '@/components/PaymentMethodPicker';
+import { BankSelector } from '@/components/pos/BankSelector';
 import {
   ArrowLeft, User, Calendar, Banknote, CheckCircle2,
   Clock, TrendingDown, History, ChevronRight, Phone,
@@ -31,6 +32,7 @@ export default function CreditDetail() {
 
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<SettlePaymentMethod>('cash');
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -125,6 +127,7 @@ export default function CreditDetail() {
           amount: amt,
           paymentMethod,
           customerName: credit.customerName,
+          bankAccountId: paymentMethod === 'bank' ? selectedBankAccountId : null,
         });
       };
       if (storage.transaction) {
@@ -247,6 +250,13 @@ export default function CreditDetail() {
                       selectedMethod={paymentMethod}
                       onSelect={setPaymentMethod}
                     />
+                    {paymentMethod === 'bank' && (
+                      <BankSelector
+                        selectedAccountId={selectedBankAccountId}
+                        onSelectAccountId={setSelectedBankAccountId}
+                        label="Receive in Bank Account"
+                      />
+                    )}
                     <div className="space-y-2">
                       <label className="text-xs text-muted-foreground font-medium">
                         Amount <span className="text-foreground">(max {format(remainingAmount)})</span>

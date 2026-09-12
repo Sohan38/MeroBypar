@@ -9,6 +9,7 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { PaymentMethodPicker, SettlePaymentMethod } from '@/components/PaymentMethodPicker';
+import { BankSelector } from '@/components/pos/BankSelector';
 import {
   ArrowLeft, Truck, Calendar, Banknote, CheckCircle2,
   Clock, TrendingDown, History, ChevronRight, Phone,
@@ -31,6 +32,7 @@ export default function PayableDetail() {
 
   const [paymentAmount, setPaymentAmount] = useState('');
   const [paymentMethod, setPaymentMethod] = useState<SettlePaymentMethod>('cash');
+  const [selectedBankAccountId, setSelectedBankAccountId] = useState<string | null>(null);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -109,6 +111,7 @@ export default function PayableDetail() {
         amount: amt,
         note: PAYMENT_METHOD_LABELS[paymentMethod],
         paymentMethod,
+        financialAccountId: paymentMethod === 'bank' ? selectedBankAccountId : null,
       };
 
       const commit = async () => {
@@ -218,6 +221,13 @@ export default function PayableDetail() {
                       selectedMethod={paymentMethod}
                       onSelect={setPaymentMethod}
                     />
+                    {paymentMethod === 'bank' && (
+                      <BankSelector
+                        selectedAccountId={selectedBankAccountId}
+                        onSelectAccountId={setSelectedBankAccountId}
+                        label="Pay from Bank Account"
+                      />
+                    )}
                     <div className="space-y-2">
                       <label className="text-xs text-muted-foreground font-semibold">
                         Paying Amount <span className="text-foreground font-bold">(max {format(remainingAmount)})</span>
