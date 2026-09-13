@@ -51,23 +51,27 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
     ? Math.round(((packQuantity ? Number(packQuantity) : 1) * Number(packSize)) * 1000) / 1000
     : null;
 
-  // Sync computed pack unit cost & stock quantity to form
+  const watchedSupplierIds = useWatch({ control: form.control, name: 'supplierIds' }) ?? [];
+
+  // Sync computed pack unit cost & stock quantity to form (single supplier / no supplier only)
   const handlePackCalculationSync = (
     sizeVal: number | null,
     costVal: number | null,
     qtyVal: number | null
   ) => {
     if (sizeVal && sizeVal > 0) {
-      if (costVal !== null && costVal >= 0) {
-        const perUnit = computePerUnitCost(costVal, sizeVal, 2);
-        if (!hasSupplier && isNew) {
-          form.setValue('purchaseRate', perUnit, { shouldValidate: true, shouldDirty: true });
+      if (!isMultiSupplier && !hasSupplier) {
+        if (costVal !== null && costVal >= 0) {
+          const perUnit = computePerUnitCost(costVal, sizeVal, 2);
+          if (isNew) {
+            form.setValue('purchaseRate', perUnit, { shouldValidate: true, shouldDirty: true });
+          }
         }
-      }
-      const packs = (qtyVal && qtyVal > 0) ? qtyVal : 1;
-      if (isNew) {
-        const totalUnits = Math.round(packs * sizeVal * 1000) / 1000;
-        form.setValue('quantity', totalUnits, { shouldValidate: true, shouldDirty: true });
+        const packs = (qtyVal && qtyVal > 0) ? qtyVal : 1;
+        if (isNew) {
+          const totalUnits = Math.round(packs * sizeVal * 1000) / 1000;
+          form.setValue('quantity', totalUnits, { shouldValidate: true, shouldDirty: true });
+        }
       }
     }
   };
@@ -102,7 +106,7 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
     <section className="px-4 py-4 space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider">Pricing</p>
-        {!hasExpiry && isNew && !hasSupplier && (
+        {!hasExpiry && isNew && (
           <div className="flex items-center gap-2">
             <span className="text-xs text-muted-foreground">Pack / Bulk Pricing</span>
             <Switch
