@@ -62,6 +62,46 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
     return calculateWeightedAverageCost(watchedSupplierStocks);
   }, [watchedSupplierStocks]);
 
+  const safePSize = useMemo(() => getSafePackSize(packSize), [packSize]);
+
+  const multiSupplierAveragePackCost = useMemo(() => {
+    if (!isMultiSupplier || !Array.isArray(watchedSupplierStocks) || watchedSupplierStocks.length === 0) {
+      return 0;
+    }
+    // 1. If stock exists, compute weighted average pack cost
+    if (multiSupplierTotalStock > 0 && multiSupplierWeightedCost > 0 && safePSize > 0) {
+      return safeCurrency(multiSupplierWeightedCost * safePSize);
+    }
+    // 2. If no stock or total stock is 0, average the non-zero packCost across suppliers
+    const validPackCosts = watchedSupplierStocks
+      .map((s: any) => {
+        if (s.packCost && Number(s.packCost) > 0) return Number(s.packCost);
+        if (s.cost && Number(s.cost) > 0 && safePSize > 0) return safeCurrency(Number(s.cost) * safePSize);
+        return null;
+      })
+      .filter((cost): cost is number => cost !== null && cost > 0);
+
+    if (validPackCosts.length > 0) {
+      const sum = validPackCosts.reduce((a, b) => a + b, 0);
+      return safeCurrency(sum / validPackCosts.length);
+    }
+
+    // 3. Fallback to form packPurchaseCost or purchaseRate * safePSize
+    if (packPurchaseCost && Number(packPurchaseCost) > 0) return Number(packPurchaseCost);
+    if (purchaseRate > 0 && safePSize > 0) return safeCurrency(purchaseRate * safePSize);
+    return 0;
+  }, [isMultiSupplier, watchedSupplierStocks, multiSupplierTotalStock, multiSupplierWeightedCost, safePSize, packPurchaseCost, purchaseRate]);
+
+  // Keep form's packPurchaseCost in sync with multi-supplier average when in multi-supplier mode
+  useEffect(() => {
+    if (isMultiSupplier && multiSupplierAveragePackCost > 0) {
+      const currentVal = form.getValues('packPurchaseCost');
+      if (currentVal !== multiSupplierAveragePackCost) {
+        form.setValue('packPurchaseCost', multiSupplierAveragePackCost, { shouldDirty: false });
+      }
+    }
+  }, [isMultiSupplier, multiSupplierAveragePackCost, form]);
+
   // Sync computed pack unit cost & stock quantity to form & all suppliers
   const handlePackCalculationSync = (
     sizeVal: number | null,
@@ -97,7 +137,9 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
       if (currentStocks.length > 0 && isNew) {
         const updated = currentStocks.map((ss: any) => {
           const supplierPacks = Number(ss.packQuantity ?? (currentStocks.length === 1 ? packs : (ss.stock ? safeQty(ss.stock / sizeVal) : 0)));
-          const supplierPackCost = (effectiveCostVal !== null && effectiveCostVal > 0) ? effectiveCostVal : Number(ss.packCost || 0);
+          const supplierPackCost = isMultiSupplier
+            ? Number(ss.packCost || effectiveCostVal || 0)
+            : ((effectiveCostVal !== null && effectiveCostVal > 0) ? effectiveCostVal : Number(ss.packCost || 0));
           const supplierUnitCost = supplierPackCost > 0 ? safeCurrency(supplierPackCost / sizeVal) : perUnit;
           const supplierStock = supplierPacks > 0 ? safeQty(supplierPacks * sizeVal) : Number(ss.stock || 0);
           const supplierTotalCost = safeCurrency(supplierPacks * supplierPackCost);
@@ -289,8 +331,9 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
                 {/* Total Pack Purchase Cost */}
                 <FormField control={form.control} name="packPurchaseCost" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-[11px] font-medium text-muted-foreground">
-                      Cost for 1 {packUnit || 'pack'} (Rs.) *
+                    <FormLabel className="text-[11px] font-medium text-muted-foreground flex items-center justify-between">
+                      <span>{isMultiSupplier ? `Avg. Cost for 1 ${packUnit || 'pack'} (Rs.)` : `Cost for 1 ${packUnit || 'pack'} (Rs.) *`}</span>
+                      {isMultiSupplier && <span className="text-[10px] text-blue-600 dark:text-blue-400 font-normal">Auto-averaged</span>}
                     </FormLabel>
                     <FormControl>
                       <div className="relative">
@@ -301,17 +344,34 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
                           min={0}
                           placeholder="e.g. 500"
                           {...field}
-                          value={field.value ?? ''}
+                          value={isMultiSupplier
+                            ? (multiSupplierAveragePackCost > 0 ? multiSupplierAveragePackCost.toFixed(2) : (field.value ?? ''))
+                            : (field.value ?? '')}
                           onChange={e => {
+                            if (isMultiSupplier) return;
                             const val = e.target.value === '' ? null : Number(e.target.value);
                             field.onChange(val);
                             handlePackCalculationSync(packSize ? Number(packSize) : null, val, packQuantity ? Number(packQuantity) : 1);
                           }}
-                          className="pl-9 h-9 text-xs font-medium"
+                          readOnly={isMultiSupplier}
+                          disabled={isMultiSupplier}
+                          className={cn(
+                            "pl-9 h-9 text-xs font-medium",
+                            isMultiSupplier && "bg-muted/60 text-muted-foreground cursor-not-allowed pr-8"
+                          )}
                         />
+                        {isMultiSupplier && (
+                          <Lock className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
+                        )}
                       </div>
                     </FormControl>
-                    <FormMessage className="text-xs" />
+                    {isMultiSupplier ? (
+                      <p className="text-[10px] text-muted-foreground">
+                        Weighted avg. across suppliers (set individual rates in Suppliers step).
+                      </p>
+                    ) : (
+                      <FormMessage className="text-xs" />
+                    )}
                   </FormItem>
                 )} />
 
