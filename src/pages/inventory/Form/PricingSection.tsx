@@ -62,44 +62,58 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
     return calculateWeightedAverageCost(watchedSupplierStocks);
   }, [watchedSupplierStocks]);
 
-  // Sync computed pack unit cost & stock quantity to form & single supplier
+  // Sync computed pack unit cost & stock quantity to form & all suppliers
   const handlePackCalculationSync = (
     sizeVal: number | null,
     costVal: number | null,
     qtyVal: number | null
   ) => {
     if (sizeVal && sizeVal > 0) {
-      const perUnit = costVal !== null && costVal >= 0 ? computePerUnitCost(costVal, sizeVal, 2) : 0;
+      // If costVal is not given yet, but purchaseRate already exists (> 0), derive costVal
+      let effectiveCostVal = costVal;
+      const curPurchaseRate = Number(form.getValues('purchaseRate') ?? 0);
+      if ((effectiveCostVal === null || effectiveCostVal <= 0) && curPurchaseRate > 0) {
+        effectiveCostVal = safeCurrency(curPurchaseRate * sizeVal);
+        form.setValue('packPurchaseCost', effectiveCostVal, { shouldDirty: true });
+      }
+
+      const perUnit = (effectiveCostVal !== null && effectiveCostVal >= 0)
+        ? computePerUnitCost(effectiveCostVal, sizeVal, 2)
+        : curPurchaseRate;
       const packs = (qtyVal && qtyVal > 0) ? qtyVal : 1;
       const totalUnits = Math.round(packs * sizeVal * 1000) / 1000;
 
-      if (!isMultiSupplier && !hasSupplier) {
-        if (costVal !== null && costVal >= 0 && isNew) {
-          form.setValue('purchaseRate', perUnit, { shouldValidate: true, shouldDirty: true });
-        }
-        if (isNew) {
-          form.setValue('quantity', totalUnits, { shouldValidate: true, shouldDirty: true });
-        }
-      } else if (!isMultiSupplier && hasSupplier && isNew) {
-        // Single supplier already selected: keep single supplier stock record in sync
-        if (costVal !== null && costVal >= 0) {
-          form.setValue('purchaseRate', perUnit, { shouldValidate: true, shouldDirty: true });
-        }
+      if (effectiveCostVal !== null && effectiveCostVal >= 0 && isNew) {
+        form.setValue('purchaseRate', perUnit, { shouldValidate: true, shouldDirty: true });
+      }
+
+      // Update global quantity if single supplier or no supplier
+      if (!isMultiSupplier && isNew) {
         form.setValue('quantity', totalUnits, { shouldValidate: true, shouldDirty: true });
-        const currentStocks = form.getValues('supplierStocks') ?? [];
-        if (currentStocks.length > 0) {
-          const updated = currentStocks.map((ss: any, idx: number) => idx === 0 ? {
+      }
+
+      // Sync with ANY existing suppliers in supplierStocks (single or multi-supplier)
+      const currentStocks = form.getValues('supplierStocks') ?? [];
+      if (currentStocks.length > 0 && isNew) {
+        const updated = currentStocks.map((ss: any) => {
+          const supplierPacks = Number(ss.packQuantity ?? (currentStocks.length === 1 ? packs : (ss.stock ? safeQty(ss.stock / sizeVal) : 0)));
+          const supplierPackCost = (effectiveCostVal !== null && effectiveCostVal > 0) ? effectiveCostVal : Number(ss.packCost || 0);
+          const supplierUnitCost = supplierPackCost > 0 ? safeCurrency(supplierPackCost / sizeVal) : perUnit;
+          const supplierStock = supplierPacks > 0 ? safeQty(supplierPacks * sizeVal) : Number(ss.stock || 0);
+          const supplierTotalCost = safeCurrency(supplierPacks * supplierPackCost);
+
+          return {
             ...ss,
-            stock: totalUnits,
-            baseQuantity: totalUnits,
-            cost: perUnit,
-            totalPurchaseCost: safeCurrency(packs * (costVal || 0)),
-            packQuantity: packs,
-            packCost: costVal,
+            stock: supplierStock,
+            baseQuantity: supplierStock,
+            cost: supplierUnitCost,
+            totalPurchaseCost: supplierTotalCost,
+            packQuantity: supplierPacks > 0 ? supplierPacks : null,
+            packCost: supplierPackCost > 0 ? supplierPackCost : null,
             appliedPackSize: sizeVal,
-          } : ss);
-          form.setValue('supplierStocks', updated, { shouldDirty: true });
-        }
+          };
+        });
+        form.setValue('supplierStocks', updated, { shouldDirty: true });
       }
     }
   };
@@ -112,6 +126,16 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
       form.setValue('packUnit', '', { shouldDirty: true });
       form.setValue('packPurchaseCost', null, { shouldDirty: true });
       form.setValue('packQuantity', null, { shouldDirty: true });
+      const currentStocks = form.getValues('supplierStocks') ?? [];
+      if (currentStocks.length > 0) {
+        const updated = currentStocks.map((ss: any) => ({
+          ...ss,
+          packQuantity: null,
+          packCost: null,
+          appliedPackSize: undefined,
+        }));
+        form.setValue('supplierStocks', updated, { shouldDirty: true });
+      }
     } else {
       if (!form.getValues('packUnit')) {
         form.setValue('packUnit', 'pack', { shouldDirty: true });
@@ -123,7 +147,7 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
       const curSize = form.getValues('packSize');
       const curCost = form.getValues('packPurchaseCost');
       if (curSize) {
-        handlePackCalculationSync(Number(curSize), curCost ? Number(curCost) : null, 1);
+        handlePackCalculationSync(Number(curSize), curCost ? Number(curCost) : null, form.getValues('packQuantity') ? Number(form.getValues('packQuantity')) : 1);
       }
     }
   };
@@ -229,7 +253,8 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
                         onChange={e => {
                           const val = e.target.value === '' ? null : Number(e.target.value);
                           field.onChange(val);
-                          handlePackCalculationSync(val, packPurchaseCost ? Number(packPurchaseCost) : null, packQuantity ? Number(packQuantity) : 1);
+                          const curCost = form.getValues('packPurchaseCost');
+                          handlePackCalculationSync(val, curCost ? Number(curCost) : null, packQuantity ? Number(packQuantity) : 1);
                         }}
                         className="h-9 text-xs"
                       />

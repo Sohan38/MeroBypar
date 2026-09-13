@@ -51,6 +51,7 @@ const SupplierStockCard = React.memo(({
   hasPackPricing,
   packUnit,
   safePackSize,
+  globalPackCost,
   baseUnit,
   locationOptions,
   currentLocId,
@@ -69,6 +70,7 @@ const SupplierStockCard = React.memo(({
   hasPackPricing: boolean;
   packUnit: string;
   safePackSize: number;
+  globalPackCost: number;
   baseUnit: string;
   locationOptions: any[];
   currentLocId: string;
@@ -85,20 +87,20 @@ const SupplierStockCard = React.memo(({
   const currentCost = Number(stockEntry.cost ?? 0);
   const currentTotalCost = Number(stockEntry.totalPurchaseCost ?? (currentStock * currentCost));
   const currentPacks = Number(stockEntry.packQuantity ?? (currentStock > 0 ? safeQty(currentStock / safePackSize) : 0));
-  const currentPackCost = Number(stockEntry.packCost ?? (currentCost > 0 ? safeCurrency(currentCost * safePackSize) : 0));
+  const effectivePackCost = Number(stockEntry.packCost ?? (globalPackCost > 0 ? globalPackCost : (currentCost > 0 ? safeCurrency(currentCost * safePackSize) : 0)));
 
   const [localPacks, setLocalPacks] = useState<string>(currentPacks > 0 ? String(currentPacks) : '');
-  const [localPackCost, setLocalPackCost] = useState<string>(currentPackCost > 0 ? String(currentPackCost) : '');
+  const [localPackCost, setLocalPackCost] = useState<string>(effectivePackCost > 0 ? String(effectivePackCost) : '');
   const [localStock, setLocalStock] = useState<string>(currentStock > 0 ? String(currentStock) : '');
   const [localCost, setLocalCost] = useState<string>(currentCost > 0 ? String(currentCost) : '');
 
-  // Keep local state in sync when external form values change (e.g. from Split Evenly)
+  // Keep local state in sync when external form values change (e.g. from Split Evenly or Pack Breakdown)
   useEffect(() => {
     setLocalStock(currentStock > 0 ? String(currentStock) : '');
     setLocalCost(currentCost > 0 ? String(currentCost) : '');
     setLocalPacks(currentPacks > 0 ? String(currentPacks) : '');
-    setLocalPackCost(currentPackCost > 0 ? String(currentPackCost) : '');
-  }, [currentStock, currentCost, currentPacks, currentPackCost]);
+    setLocalPackCost(effectivePackCost > 0 ? String(effectivePackCost) : '');
+  }, [currentStock, currentCost, currentPacks, effectivePackCost]);
 
   const debounceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -417,6 +419,8 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
 
   const safePackSize = useMemo(() => getSafePackSize(packSize), [packSize]);
   const hasPackPricing = Boolean(packSize && Number(packSize) > 0);
+  const watchedPackCost = useWatch({ control: form.control, name: 'packPurchaseCost' });
+  const globalPackCost = Number(watchedPackCost ?? 0);
 
   // Aggregations
   const totalStockPieces = useMemo(() => calculateTotalSupplierStock(supplierStocks), [supplierStocks]);
@@ -458,13 +462,17 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
       : (hasPackPricing && defaultPackQty > 0 ? safeQty(defaultPackQty * safePackSize) : 0);
     const defaultLocationId = 'loc-default';
 
+    const unitCost = hasPackPricing && defaultPackCost > 0 && safePackSize > 0
+      ? safeCurrency(defaultPackCost / safePackSize)
+      : (currentPurchaseRate > 0 ? currentPurchaseRate : 0);
+
     if (!currentStocks.some((ss: any) => ss.supplierId === sid && (ss.locationId || defaultLocationId) === defaultLocationId)) {
       form.setValue('supplierStocks', [
         ...currentStocks,
         {
           supplierId: sid,
           locationId: defaultLocationId,
-          cost: currentPurchaseRate > 0 ? currentPurchaseRate : (hasPackPricing && defaultPackCost > 0 && safePackSize > 0 ? safeCurrency(defaultPackCost / safePackSize) : 0),
+          cost: unitCost,
           stock: globalStock,
           baseQuantity: globalStock,
           packQuantity: defaultPackQty > 0 ? defaultPackQty : null,
@@ -472,7 +480,7 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
           appliedPackSize: safePackSize,
           totalPurchaseCost: hasPackPricing && defaultPackQty > 0 && defaultPackCost > 0
             ? safeCurrency(defaultPackQty * defaultPackCost)
-            : safeCurrency(globalStock * currentPurchaseRate),
+            : safeCurrency(globalStock * unitCost),
           isPrimary: isFirst,
           supplierSku: '',
           reorderLevel: undefined,
@@ -498,12 +506,23 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
 
   const updateSupplierStockRecord = useCallback((supplierId: string, partial: any, currentLocationId = 'loc-default') => {
     const currentStocks: any[] = form.getValues('supplierStocks') ?? [];
+    const isPrimarySupplier = partial.isPrimary ?? (supplierId === primarySupplierId || currentStocks.length === 1);
+
+    // If packCost was edited and this is primary or single supplier, keep packPurchaseCost in sync with pack breakdown
+    if (hasPackPricing && partial.packCost !== undefined && isPrimarySupplier) {
+      const pCost = Number(partial.packCost) || null;
+      form.setValue('packPurchaseCost', pCost, { shouldDirty: true });
+      if (pCost && safePackSize > 0) {
+        form.setValue('purchaseRate', safeCurrency(pCost / safePackSize), { shouldDirty: true, shouldValidate: true });
+      }
+    }
+
     form.setValue('supplierStocks', currentStocks.map((ss: any) =>
       ss.supplierId === supplierId && (ss.locationId || 'loc-default') === currentLocationId
         ? { ...ss, ...partial }
         : ss
     ), { shouldDirty: true });
-  }, [form]);
+  }, [form, primarySupplierId, hasPackPricing, safePackSize]);
 
   // ─── Quick Stock Distribution Actions ──────────────────────────────────────────
 
@@ -777,6 +796,7 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
                     hasPackPricing={hasPackPricing}
                     packUnit={packUnit}
                     safePackSize={safePackSize}
+                    globalPackCost={globalPackCost}
                     baseUnit={baseUnit}
                     locationOptions={locationOptions}
                     currentLocId={currentLocId}
