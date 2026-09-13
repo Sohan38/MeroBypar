@@ -194,64 +194,16 @@ export const CartPanel = React.memo(({
                   onSetQuantity={(name, quantity) => onSetVariantQuantity(draft.productId, name, quantity)}
                 />
               ))}
-              {visibleCart.map(item => {
-                const lineKey = `${item.productId}::${item.variantName ?? ''}`;
-                return (
-                  <div key={lineKey}
-                    className="flex flex-col gap-2 p-3 bg-card rounded-xl border shadow-xs hover:border-primary/30 transition-all">
-                    <div className="flex justify-between items-start gap-2">
-                      <div className="min-w-0 flex-1">
-                        <span className="font-semibold text-sm line-clamp-2 leading-snug">{item.productName}</span>
-                        {item.variantName && (
-                          <span className="mt-1 inline-flex rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-                            {item.variantName}
-                          </span>
-                        )}
-                      </div>
-                      <button onClick={() => onRemoveFromCart(lineKey)}
-                        className="text-muted-foreground hover:text-destructive transition-colors shrink-0 p-1 -mr-1 -mt-1 rounded-md"
-                        aria-label="Remove item">
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
-                    <div className="flex justify-between items-center pt-0.5">
-                      <span className="text-xs text-muted-foreground font-medium">{format(item.sellingRate)} each</span>
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          className="h-8 w-8 rounded-lg border bg-muted/30 flex items-center justify-center hover:bg-destructive/10 text-destructive transition-colors active:scale-95"
-                          onClick={() => {
-                            if (item.quantity === 1) onRemoveFromCart(lineKey);
-                            else onUpdateCartQuantity(lineKey, -1);
-                          }}
-                          aria-label="Decrease quantity"
-                        >
-                          <Minus className="h-3.5 w-3.5" />
-                        </button>
-                        <Input
-                          type="number"
-                          inputMode="numeric"
-                          className="h-8 w-12 text-center text-sm p-0 font-bold bg-background"
-                          value={item.quantity}
-                          onChange={e => onSetCartQuantity(lineKey, parseInt(e.target.value))}
-                          min={1}
-                          max={item.maxQuantity}
-                          aria-label="Item quantity"
-                        />
-                        <button
-                          type="button"
-                          className="h-8 w-8 rounded-lg border bg-muted/30 flex items-center justify-center hover:bg-green-500/10 text-green-600 transition-colors active:scale-95"
-                          onClick={() => onUpdateCartQuantity(lineKey, 1)}
-                          aria-label="Increase quantity"
-                        >
-                          <Plus className="h-3.5 w-3.5" />
-                        </button>
-                        <span className="font-bold text-sm ml-1 w-20 text-right tabular-nums text-foreground">{format(item.subtotal)}</span>
-                      </div>
-                    </div>
-                  </div>
-                );
-              })}
+              {visibleCart.map(item => (
+                <CartItemRow
+                  key={`${item.productId}::${item.variantName ?? ''}`}
+                  item={item}
+                  format={format}
+                  onRemove={onRemoveFromCart}
+                  onUpdateQuantity={onUpdateCartQuantity}
+                  onSetQuantity={onSetCartQuantity}
+                />
+              ))}
             </div>
           )}
         </div>
@@ -469,3 +421,123 @@ export const CartPanel = React.memo(({
 });
 
 CartPanel.displayName = 'CartPanel';
+
+interface CartItemRowProps {
+  item: CartItem;
+  format: (value: number) => string;
+  onRemove: (lineKey: string) => void;
+  onUpdateQuantity: (lineKey: string, delta: number) => void;
+  onSetQuantity: (lineKey: string, qty: number) => void;
+}
+
+const CartItemRow = React.memo(({
+  item,
+  format,
+  onRemove,
+  onUpdateQuantity,
+  onSetQuantity,
+}: CartItemRowProps) => {
+  const lineKey = `${item.productId}::${item.variantName ?? ''}`;
+  const [draftQty, setDraftQty] = React.useState<string>(String(item.quantity));
+
+  // Sync draft whenever upstream item.quantity changes (e.g. via +/- buttons or external updates)
+  React.useEffect(() => {
+    setDraftQty(String(item.quantity));
+  }, [item.quantity]);
+
+  const commitValue = () => {
+    const parsed = parseInt(draftQty, 10);
+    if (isNaN(parsed) || parsed < 1) {
+      // Revert back to previous valid quantity if blank or zero
+      setDraftQty(String(item.quantity));
+    } else {
+      const clamped = Math.min(parsed, item.maxQuantity);
+      onSetQuantity(lineKey, clamped);
+      setDraftQty(String(clamped));
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value;
+    // Allow empty string so user can delete all digits and re-type
+    if (val === '') {
+      setDraftQty('');
+      return;
+    }
+    const num = parseInt(val, 10);
+    if (!isNaN(num)) {
+      setDraftQty(val);
+      if (num >= 1) {
+        onSetQuantity(lineKey, num);
+      }
+    }
+  };
+
+  return (
+    <div className="flex flex-col gap-2 p-3 bg-card rounded-xl border shadow-xs hover:border-primary/30 transition-all">
+      <div className="flex justify-between items-start gap-2">
+        <div className="min-w-0 flex-1">
+          <span className="font-semibold text-sm line-clamp-2 leading-snug">{item.productName}</span>
+          {item.variantName && (
+            <span className="mt-1 inline-flex rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+              {item.variantName}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => onRemove(lineKey)}
+          className="text-muted-foreground hover:text-destructive transition-colors shrink-0 p-1 -mr-1 -mt-1 rounded-md"
+          aria-label="Remove item"
+        >
+          <Trash2 className="h-4 w-4" />
+        </button>
+      </div>
+      <div className="flex justify-between items-center pt-0.5">
+        <span className="text-xs text-muted-foreground font-medium">{format(item.sellingRate)} each</span>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            className="h-8 w-8 rounded-lg border bg-muted/30 flex items-center justify-center hover:bg-destructive/10 text-destructive transition-colors active:scale-95"
+            onClick={() => {
+              if (item.quantity === 1) onRemove(lineKey);
+              else onUpdateQuantity(lineKey, -1);
+            }}
+            aria-label="Decrease quantity"
+          >
+            <Minus className="h-3.5 w-3.5" />
+          </button>
+          <Input
+            type="text"
+            inputMode="numeric"
+            pattern="[0-9]*"
+            className="h-8 w-12 text-center text-sm p-0 font-bold bg-background"
+            value={draftQty}
+            onFocus={e => e.target.select()}
+            onChange={handleChange}
+            onBlur={commitValue}
+            onKeyDown={e => {
+              if (e.key === 'Enter') {
+                e.currentTarget.blur();
+              }
+            }}
+            aria-label="Item quantity"
+          />
+          <button
+            type="button"
+            className="h-8 w-8 rounded-lg border bg-muted/30 flex items-center justify-center hover:bg-green-500/10 text-green-600 transition-colors active:scale-95"
+            onClick={() => onUpdateQuantity(lineKey, 1)}
+            aria-label="Increase quantity"
+          >
+            <Plus className="h-3.5 w-3.5" />
+          </button>
+          <span className="font-bold text-sm ml-1 w-20 text-right tabular-nums text-foreground">
+            {format(item.subtotal)}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+});
+
+CartItemRow.displayName = 'CartItemRow';
+

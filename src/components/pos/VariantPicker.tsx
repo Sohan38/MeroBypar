@@ -101,36 +101,15 @@ export function VariantPicker({
                                 const isOutOfStock = variant.quantity <= 0;
                                 const atProductLimit = otherSelected + quantity >= productStock;
                                 return (
-                                    <div key={variant.name} className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 ${quantity > 0 ? 'border-primary/30 bg-background' : 'bg-background/60'}`}>
-                                        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${quantity > 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
-                                            {quantity > 0 ? <Check className="h-3.5 w-3.5" /> : <Layers className="h-3.5 w-3.5" />}
-                                        </div>
-                                        <div className="min-w-0 flex-1">
-                                            <p className="truncate text-sm font-medium">{variant.name}</p>
-                                            <p className={`text-[11px] ${isOutOfStock ? 'text-destructive' : 'text-muted-foreground'}`}>
-                                                {isOutOfStock ? 'Out of stock' : `${variant.quantity} ${product.unit} available`}
-                                            </p>
-                                        </div>
-                                        <div className="flex shrink-0 items-center gap-1">
-                                            <Button type="button" variant="outline" size="icon" className="h-8 w-8 rounded-lg" disabled={quantity === 0} onClick={() => onSetQuantity(variant.name, quantity - 1)} aria-label={`Decrease ${variant.name} quantity`}>
-                                                <Minus className="h-3 w-3" />
-                                            </Button>
-                                            <Input
-                                                type="number"
-                                                inputMode="numeric"
-                                                min={0}
-                                                max={variant.quantity}
-                                                value={quantity}
-                                                disabled={isOutOfStock}
-                                                onChange={event => onSetQuantity(variant.name, Number(event.target.value))}
-                                                className="h-8 w-12 rounded-lg p-0 text-center text-sm font-bold"
-                                                aria-label={`${variant.name} quantity`}
-                                            />
-                                            <Button type="button" variant="outline" size="icon" className="h-8 w-8 rounded-lg" disabled={isOutOfStock || quantity >= variant.quantity || atProductLimit} onClick={() => onSetQuantity(variant.name, quantity + 1)} aria-label={`Increase ${variant.name} quantity`}>
-                                                <Plus className="h-3 w-3" />
-                                            </Button>
-                                        </div>
-                                    </div>
+                                    <VariantRow
+                                        key={variant.name}
+                                        variant={variant}
+                                        unit={product.unit}
+                                        quantity={quantity}
+                                        isOutOfStock={isOutOfStock}
+                                        atProductLimit={atProductLimit}
+                                        onSetQuantity={onSetQuantity}
+                                    />
                                 );
                             })
                         )}
@@ -140,3 +119,109 @@ export function VariantPicker({
         </div>
     );
 }
+
+interface VariantRowProps {
+    variant: { name: string; quantity: number };
+    unit: string;
+    quantity: number;
+    isOutOfStock: boolean;
+    atProductLimit: boolean;
+    onSetQuantity: (name: string, quantity: number) => void;
+}
+
+function VariantRow({
+    variant,
+    unit,
+    quantity,
+    isOutOfStock,
+    atProductLimit,
+    onSetQuantity,
+}: VariantRowProps) {
+    const [draftQty, setDraftQty] = useState<string>(String(quantity));
+
+    // Sync draft with external quantity change
+    useMemo(() => {
+        setDraftQty(String(quantity));
+    }, [quantity]);
+
+    const commitValue = () => {
+        const parsed = parseInt(draftQty, 10);
+        if (isNaN(parsed) || parsed < 0) {
+            setDraftQty(String(quantity));
+        } else {
+            const clamped = Math.min(parsed, variant.quantity);
+            onSetQuantity(variant.name, clamped);
+            setDraftQty(String(clamped));
+        }
+    };
+
+    const handleChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+        const val = event.target.value;
+        if (val === '') {
+            setDraftQty('');
+            return;
+        }
+        const num = parseInt(val, 10);
+        if (!isNaN(num)) {
+            setDraftQty(val);
+            if (num >= 0) {
+                onSetQuantity(variant.name, num);
+            }
+        }
+    };
+
+    return (
+        <div className={`flex items-center gap-2 rounded-xl border px-2.5 py-2 ${quantity > 0 ? 'border-primary/30 bg-background' : 'bg-background/60'}`}>
+            <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg ${quantity > 0 ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
+                {quantity > 0 ? <Check className="h-3.5 w-3.5" /> : <Layers className="h-3.5 w-3.5" />}
+            </div>
+            <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-medium">{variant.name}</p>
+                <p className={`text-[11px] ${isOutOfStock ? 'text-destructive' : 'text-muted-foreground'}`}>
+                    {isOutOfStock ? 'Out of stock' : `${variant.quantity} ${unit} available`}
+                </p>
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg"
+                    disabled={quantity === 0}
+                    onClick={() => onSetQuantity(variant.name, quantity - 1)}
+                    aria-label={`Decrease ${variant.name} quantity`}
+                >
+                    <Minus className="h-3 w-3" />
+                </Button>
+                <Input
+                    type="text"
+                    inputMode="numeric"
+                    pattern="[0-9]*"
+                    value={draftQty}
+                    disabled={isOutOfStock}
+                    onFocus={e => e.target.select()}
+                    onChange={handleChange}
+                    onBlur={commitValue}
+                    onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                            e.currentTarget.blur();
+                        }
+                    }}
+                    className="h-8 w-12 rounded-lg p-0 text-center text-sm font-bold"
+                    aria-label={`${variant.name} quantity`}
+                />
+                <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    className="h-8 w-8 rounded-lg"
+                    disabled={isOutOfStock || quantity >= variant.quantity || atProductLimit}
+                    onClick={() => onSetQuantity(variant.name, quantity + 1)}
+                    aria-label={`Increase ${variant.name} quantity`}
+                >
+                    <Plus className="h-3 w-3" />
+                </Button>
+            </div>
+        </div>
+    );
+}
