@@ -183,7 +183,7 @@ export const StockSection = React.memo(({
           <SummaryChip label="Total stock (from all suppliers)" qty={totalSupplierStockQuantity ?? 0} accent />
           <p className="text-xs text-muted-foreground flex items-start gap-1.5">
             <AlertTriangle className="h-3.5 w-3.5 shrink-0 mt-0.5 text-amber-500" />
-            Edit individual stock in the Suppliers section below.
+            Edit individual stock in the Suppliers step.
           </p>
           <NumericField form={form} name="minimumStock" label="Low Stock Alert"
             unit={watchedUnit}

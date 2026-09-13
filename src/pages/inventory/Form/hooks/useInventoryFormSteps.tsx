@@ -124,6 +124,35 @@ export function useInventoryFormSteps(
             fields: ['hasExpiry', 'hasVariants', 'variants'],
         });
 
+        result.push({
+            id: 'pricing-stock',
+            label: 'Pricing & Stock',
+            content: (
+                <>
+                    <PricingSection
+                        form={form}
+                        hasExpiry={hasExpiry}
+                        averagePurchaseRate={averagePurchaseRate}
+                        hasSupplier={!hasExpiry && watchedSupplierIds.length > 0}
+                        isMultiSupplier={isMultiSupplier}
+                        isNew={isNew}
+                    />
+                    <Separator className="my-0" />
+                    <StockSection
+                        form={form}
+                        isNew={isNew}
+                        totalBatchQuantity={totalBatchQuantity}
+                        totalVariantQuantity={totalVariantQuantity}
+                        isMultiSupplier={isMultiSupplier}
+                        totalSupplierStockQuantity={totalSupplierStockQuantity}
+                        hasExpiry={hasExpiry}
+                        hasVariants={hasVariants}
+                    />
+                </>
+            ),
+            fields: ['purchaseRate', 'sellingRate', 'packSize', 'packUnit', 'packPurchaseCost', 'quantity', 'minimumStock'],
+        });
+
         if (!hasExpiry) {
             result.push({
                 id: 'suppliers',
@@ -158,35 +187,6 @@ export function useInventoryFormSteps(
                 ),
             });
         }
-
-        result.push({
-            id: 'pricing-stock',
-            label: 'Pricing & Stock',
-            content: (
-                <>
-                    <PricingSection
-                        form={form}
-                        hasExpiry={hasExpiry}
-                        averagePurchaseRate={averagePurchaseRate}
-                        hasSupplier={!hasExpiry && watchedSupplierIds.length > 0}
-                        isMultiSupplier={isMultiSupplier}
-                        isNew={isNew}
-                    />
-                    <Separator className="my-0" />
-                    <StockSection
-                        form={form}
-                        isNew={isNew}
-                        totalBatchQuantity={totalBatchQuantity}
-                        totalVariantQuantity={totalVariantQuantity}
-                        isMultiSupplier={isMultiSupplier}
-                        totalSupplierStockQuantity={totalSupplierStockQuantity}
-                        hasExpiry={hasExpiry}
-                        hasVariants={hasVariants}
-                    />
-                </>
-            ),
-            fields: ['purchaseRate', 'sellingRate', 'packSize', 'packUnit', 'packPurchaseCost', 'quantity', 'minimumStock'],
-        });
 
         result.push({
             id: 'capabilities',

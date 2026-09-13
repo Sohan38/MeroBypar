@@ -6,7 +6,7 @@ import { CheckCircle2, TrendingUp, TrendingDown, Lock, PackageCheck, Calculator,
 import { SectionProps } from './types';
 import { useWatch } from 'react-hook-form';
 import { cn } from '@/lib/utils';
-import { computePerUnitCost, calculateTotalSupplierStock, calculateWeightedAverageCost, getSafePackSize } from '@/utils/unitUtils';
+import { computePerUnitCost, calculateTotalSupplierStock, calculateWeightedAverageCost, getSafePackSize, safeCurrency, safeQty } from '@/utils/unitUtils';
 
 interface PricingSectionProps extends SectionProps {
   hasExpiry: boolean;
@@ -62,24 +62,43 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
     return calculateWeightedAverageCost(watchedSupplierStocks);
   }, [watchedSupplierStocks]);
 
-  // Sync computed pack unit cost & stock quantity to form (single supplier / no supplier only)
+  // Sync computed pack unit cost & stock quantity to form & single supplier
   const handlePackCalculationSync = (
     sizeVal: number | null,
     costVal: number | null,
     qtyVal: number | null
   ) => {
     if (sizeVal && sizeVal > 0) {
+      const perUnit = costVal !== null && costVal >= 0 ? computePerUnitCost(costVal, sizeVal, 2) : 0;
+      const packs = (qtyVal && qtyVal > 0) ? qtyVal : 1;
+      const totalUnits = Math.round(packs * sizeVal * 1000) / 1000;
+
       if (!isMultiSupplier && !hasSupplier) {
-        if (costVal !== null && costVal >= 0) {
-          const perUnit = computePerUnitCost(costVal, sizeVal, 2);
-          if (isNew) {
-            form.setValue('purchaseRate', perUnit, { shouldValidate: true, shouldDirty: true });
-          }
+        if (costVal !== null && costVal >= 0 && isNew) {
+          form.setValue('purchaseRate', perUnit, { shouldValidate: true, shouldDirty: true });
         }
-        const packs = (qtyVal && qtyVal > 0) ? qtyVal : 1;
         if (isNew) {
-          const totalUnits = Math.round(packs * sizeVal * 1000) / 1000;
           form.setValue('quantity', totalUnits, { shouldValidate: true, shouldDirty: true });
+        }
+      } else if (!isMultiSupplier && hasSupplier && isNew) {
+        // Single supplier already selected: keep single supplier stock record in sync
+        if (costVal !== null && costVal >= 0) {
+          form.setValue('purchaseRate', perUnit, { shouldValidate: true, shouldDirty: true });
+        }
+        form.setValue('quantity', totalUnits, { shouldValidate: true, shouldDirty: true });
+        const currentStocks = form.getValues('supplierStocks') ?? [];
+        if (currentStocks.length > 0) {
+          const updated = currentStocks.map((ss: any, idx: number) => idx === 0 ? {
+            ...ss,
+            stock: totalUnits,
+            baseQuantity: totalUnits,
+            cost: perUnit,
+            totalPurchaseCost: safeCurrency(packs * (costVal || 0)),
+            packQuantity: packs,
+            packCost: costVal,
+            appliedPackSize: sizeVal,
+          } : ss);
+          form.setValue('supplierStocks', updated, { shouldDirty: true });
         }
       }
     }
@@ -365,17 +384,7 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
                   </div>
 
                   <div className="flex items-center justify-between pt-0.5 text-[11px] text-blue-700 dark:text-blue-300">
-                    <span>💡 Stock is partitioned across suppliers below. Enter cartons per supplier.</span>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        const el = document.getElementById('supplier-section');
-                        if (el) el.scrollIntoView({ behavior: 'smooth' });
-                      }}
-                      className="shrink-0 underline font-semibold hover:text-blue-800 dark:hover:text-blue-100 ml-2"
-                    >
-                      Go to Suppliers ↓
-                    </button>
+                    <span>💡 Stock is partitioned across suppliers. Enter {packUnit || 'carton'}s per supplier in the Suppliers step.</span>
                   </div>
                 </div>
               )}

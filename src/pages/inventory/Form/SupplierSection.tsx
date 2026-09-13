@@ -480,7 +480,7 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
         },
       ], { shouldDirty: true });
     }
-  }, [selectedSupplierIds, form]);
+  }, [selectedSupplierIds, form, hasPackPricing, safePackSize]);
 
   const removeSupplier = useCallback((sid: string) => {
     const next = selectedSupplierIds.filter(s => s !== sid);
