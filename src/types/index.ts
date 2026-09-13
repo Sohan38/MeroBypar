@@ -195,12 +195,22 @@ export interface SupplierProductRecord {
   supplierId: string;
   locationId: string;       // effective identity for supplier stock in a product record
   supplierSku?: string;     // supplier's own SKU for this product
-  cost: number;             // supplier-specific purchase cost
-  stock: number;            // stock from this supplier at this location
+  cost: number;             // supplier-specific purchase cost (derived or legacy unit cost)
+  stock: number;            // stock from this supplier at this location (base unit)
   reorderLevel?: number;    // trigger a restock alert at this level
   lastPurchaseDate?: string;
   notes?: string;
+  // Multi-Supplier Pack Sharing & Historical Precision
+  isPrimary?: boolean;
+  baseQuantity?: number;     // Source of truth base quantity
+  totalPurchaseCost?: number;// Stored to prevent rounding drift
+  packQuantity?: number;     // Sourced packs from this supplier
+  packCost?: number;         // Cost per pack from this supplier
+  appliedPackSize?: number;  // Snapshot for historical immutability
 }
+
+export type SupplierStock = SupplierProductRecord;
+
 
 export interface Supplier extends StorageRecord {
   name: string;

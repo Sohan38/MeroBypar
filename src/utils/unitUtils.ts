@@ -184,3 +184,83 @@ export function getQuickQuantityPresets(unit?: string | null): number[] {
   }
   return [1, 2, 3, 5, 10];
 }
+
+/**
+ * Safe currency rounding to 2 decimal places to eliminate IEEE-754 drift.
+ */
+export function safeCurrency(val: number): number {
+  if (isNaN(val) || !isFinite(val)) return 0;
+  return Math.round(val * 100) / 100;
+}
+
+/**
+ * Safe quantity rounding to 3 decimal places.
+ */
+export function safeQty(val: number): number {
+  if (isNaN(val) || !isFinite(val)) return 0;
+  return Math.round(val * 1000) / 1000;
+}
+
+/**
+ * Ensures division-by-zero safeguard when calculating pack numbers.
+ */
+export function getSafePackSize(packSize?: number | null): number {
+  const parsed = Number(packSize);
+  return (parsed && parsed > 0) ? parsed : 1;
+}
+
+/**
+ * Calculates total stock across supplier records with safe quantity math.
+ */
+export function calculateTotalSupplierStock(supplierStocks: Array<any>): number {
+  if (!supplierStocks || !Array.isArray(supplierStocks)) return 0;
+  const total = supplierStocks.reduce((sum, ss) => {
+    const qty = Number(ss?.baseQuantity ?? ss?.stock ?? 0);
+    return sum + (isNaN(qty) ? 0 : qty);
+  }, 0);
+  return safeQty(total);
+}
+
+/**
+ * Calculates weighted average purchase cost across supplier stocks.
+ * Uses totalPurchaseCost as source of truth when available to avoid rounding drift.
+ */
+export function calculateWeightedAverageCost(supplierStocks: Array<any>): number {
+  if (!supplierStocks || !Array.isArray(supplierStocks) || supplierStocks.length === 0) return 0;
+
+  const totalStock = calculateTotalSupplierStock(supplierStocks);
+
+  if (totalStock > 0) {
+    const totalCost = supplierStocks.reduce((sum, ss) => {
+      if (ss?.totalPurchaseCost !== undefined && ss?.totalPurchaseCost !== null && !isNaN(Number(ss.totalPurchaseCost))) {
+        return sum + Number(ss.totalPurchaseCost);
+      }
+      const qty = Number(ss?.baseQuantity ?? ss?.stock ?? 0);
+      const unitCost = Number(ss?.cost ?? 0);
+      return sum + (qty * unitCost);
+    }, 0);
+
+    return safeCurrency(totalCost / totalStock);
+  }
+
+  // Fallback if stock is 0: average of non-zero unit costs
+  const nonZeroCosts = supplierStocks
+    .map(ss => Number(ss?.cost ?? 0))
+    .filter(c => c > 0);
+
+  if (nonZeroCosts.length > 0) {
+    const avg = nonZeroCosts.reduce((a, b) => a + b, 0) / nonZeroCosts.length;
+    return safeCurrency(avg);
+  }
+
+  return 0;
+}
+
+/**
+ * Safely converts base stock to pack quantity representation.
+ */
+export function calculatePacksFromStock(stock: number, packSize?: number | null): number {
+  const safeSize = getSafePackSize(packSize);
+  return safeQty(stock / safeSize);
+}
+

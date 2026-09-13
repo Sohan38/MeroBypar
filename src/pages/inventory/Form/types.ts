@@ -35,6 +35,12 @@ export const productSchema = z.object({
     reorderLevel: z.coerce.number().min(0).optional(),
     lastPurchaseDate: z.string().optional(),
     notes: z.string().optional(),
+    isPrimary: z.boolean().optional(),
+    baseQuantity: z.coerce.number().min(0).optional(),
+    totalPurchaseCost: z.coerce.number().min(0).optional(),
+    packQuantity: z.coerce.number().min(0).optional().nullable(),
+    packCost: z.coerce.number().min(0).optional().nullable(),
+    appliedPackSize: z.coerce.number().min(1).optional().nullable(),
   })).optional(),
 
   unit: z.string().min(1, 'Please select a unit'),

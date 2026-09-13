@@ -12,6 +12,14 @@ import { useStorageProvider } from '@/storage/StorageContext';
 import { createPurchasesForNewItem } from '@/services/purchaseHelpers';
 import { PaymentMethod, ProductUnit, ProductBatch, BatchFormData, PurchasePaymentStatus } from '@/types';
 import { productSchema, ProductFormValues } from '../types';
+import {
+    calculateTotalSupplierStock,
+    calculateWeightedAverageCost,
+    getSafePackSize,
+    safeCurrency,
+    safeQty
+} from '@/utils/unitUtils';
+
 
 export type SupplierPurchaseDraft = {
     invoiceNumber: string;
@@ -183,9 +191,11 @@ export function useInventoryForm(
         return supplierIdFromQuery ? [supplierIdFromQuery] : [];
     }, [watchedSupplierIds, supplierIdFromQuery]);
 
+    const packSizeWatch = useWatch({ control: form.control, name: 'packSize' });
+
     const totalSupplierStockQuantity = useMemo(() => {
         if (!isMultiSupplier) return 0;
-        return (watchedSupplierStocks as any[]).reduce((sum, ss) => sum + (Number(ss.stock) || 0), 0);
+        return calculateTotalSupplierStock(watchedSupplierStocks);
     }, [isMultiSupplier, watchedSupplierStocks]);
 
     const supplierLookup = useMemo(() => {
@@ -246,24 +256,28 @@ export function useInventoryForm(
         if (watchedSupplierIds.length === 1) {
             computed = Number(stocks[0]?.cost) || 0;
         } else {
-            const totalStock = stocks.reduce((s, ss) => s + (Number(ss.stock) || 0), 0);
-            if (totalStock > 0) {
-                computed = stocks.reduce((s, ss) => s + (Number(ss.cost) || 0) * (Number(ss.stock) || 0), 0) / totalStock;
-            } else {
-                const withCost = stocks.filter(ss => Number(ss.cost) > 0);
-                if (withCost.length > 0) computed = withCost.reduce((s, ss) => s + Number(ss.cost), 0) / withCost.length;
-            }
+            computed = calculateWeightedAverageCost(stocks);
         }
         const current = form.getValues('purchaseRate');
         if (Math.abs(computed - current) > 0.001) form.setValue('purchaseRate', computed, { shouldDirty: false });
     }, [watchedSupplierIds, watchedSupplierStocks, hasExpiry, form]);
 
-    // Quantity sync
+    // Quantity & Pack sync
     useEffect(() => {
         if (hasExpiry) form.setValue('quantity', totalBatchQuantity, { shouldDirty: true });
         else if (hasVariants) form.setValue('quantity', totalVariantQuantity, { shouldDirty: true });
-        else if (isMultiSupplier) form.setValue('quantity', totalSupplierStockQuantity, { shouldDirty: true });
-    }, [hasExpiry, hasVariants, isMultiSupplier, totalBatchQuantity, totalVariantQuantity, totalSupplierStockQuantity, form]);
+        else if (isMultiSupplier) {
+            form.setValue('quantity', totalSupplierStockQuantity, { shouldDirty: true });
+            if (packSizeWatch && Number(packSizeWatch) > 0) {
+                const safeSize = getSafePackSize(packSizeWatch);
+                const computedPacks = safeQty(totalSupplierStockQuantity / safeSize);
+                if (form.getValues('packQuantity') !== computedPacks) {
+                    form.setValue('packQuantity', computedPacks, { shouldDirty: false });
+                }
+            }
+        }
+    }, [hasExpiry, hasVariants, isMultiSupplier, totalBatchQuantity, totalVariantQuantity, totalSupplierStockQuantity, packSizeWatch, form]);
+
 
     // Purchase drafts
     useEffect(() => {
@@ -429,26 +443,35 @@ export function useInventoryForm(
                 : data.hasVariants
                     ? (data.variants || []).reduce((total, v) => total + v.quantity, 0)
                     : isMultiSup
-                        ? resolvedSupplierStocks.reduce((sum, ss) => sum + (Number(ss.stock) || 0), 0)
+                        ? calculateTotalSupplierStock(resolvedSupplierStocks)
                         : data.quantity;
 
             const effectivePurchaseRate = (() => {
                 if (isMultiSup && resolvedSupplierStocks.length > 0) {
-                    const totalStock = resolvedSupplierStocks.reduce((s, ss) => s + (Number(ss.stock) || 0), 0);
-                    if (totalStock > 0) {
-                        const weightedCost = resolvedSupplierStocks.reduce(
-                            (s, ss) => s + (Number(ss.cost) || 0) * (Number(ss.stock) || 0),
-                            0
-                        );
-                        return weightedCost / totalStock;
-                    }
+                    return calculateWeightedAverageCost(resolvedSupplierStocks);
                 }
                 return averagePurchaseRate;
             })();
 
-            const normalizedSupplierStocks = resolvedSupplierStocks.map((ss: any) =>
-                isMultiSup ? ss : { ...ss, stock: calculatedStock, cost: ss.cost || effectivePurchaseRate }
-            );
+            const safeSize = getSafePackSize(data.packSize);
+            const normalizedSupplierStocks = resolvedSupplierStocks.map((ss: any, idx: number) => {
+                const baseStock = isMultiSup ? Number(ss.baseQuantity ?? ss.stock ?? 0) : calculatedStock;
+                const unitCost = Number(ss.cost || effectivePurchaseRate || 0);
+                const totalCost = Number(ss.totalPurchaseCost ?? safeCurrency(baseStock * unitCost));
+                const isPrimary = ss.isPrimary ?? (idx === 0);
+
+                return {
+                    ...ss,
+                    stock: baseStock,
+                    baseQuantity: baseStock,
+                    cost: unitCost,
+                    totalPurchaseCost: totalCost,
+                    packQuantity: ss.packQuantity ?? (data.packSize ? safeQty(baseStock / safeSize) : null),
+                    packCost: ss.packCost ?? (data.packSize ? safeCurrency(unitCost * safeSize) : null),
+                    appliedPackSize: data.packSize ? safeSize : null,
+                    isPrimary,
+                };
+            });
 
             const productData = {
                 ...data,
@@ -461,7 +484,7 @@ export function useInventoryForm(
                 supplierId: resolvedSupplierIds[0] ?? '',
                 supplierIds: resolvedSupplierIds,
                 supplierStocks: isNew
-                    ? normalizedSupplierStocks.map(stock => ({ ...stock, stock: 0 }))
+                    ? normalizedSupplierStocks.map(stock => ({ ...stock, stock: 0, baseQuantity: 0 }))
                     : normalizedSupplierStocks,
                 notes: data.notes ?? '',
                 hasExpiry: data.hasExpiry ?? false,
@@ -511,7 +534,7 @@ export function useInventoryForm(
                         } else if (shouldCreateSupplierPurchases) {
                             for (const entry of supplierPurchaseEntries) {
                                 const supplierId = entry?.supplierId;
-                                const qty = Number(entry?.stock || 0);
+                                const qty = Number(entry?.baseQuantity ?? entry?.stock ?? 0);
                                 if (!supplierId || qty <= 0) continue;
                                 const supplier = suppliers.find(c => c.id === supplierId);
                                 const rate = Number(entry?.cost ?? productData.purchaseRate ?? 0) || 0;

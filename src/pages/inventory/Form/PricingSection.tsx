@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
@@ -6,7 +6,7 @@ import { CheckCircle2, TrendingUp, TrendingDown, Lock, PackageCheck, Calculator,
 import { SectionProps } from './types';
 import { useWatch } from 'react-hook-form';
 import { cn } from '@/lib/utils';
-import { computePerUnitCost } from '@/utils/unitUtils';
+import { computePerUnitCost, calculateTotalSupplierStock, calculateWeightedAverageCost, getSafePackSize } from '@/utils/unitUtils';
 
 interface PricingSectionProps extends SectionProps {
   hasExpiry: boolean;
@@ -52,6 +52,15 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
     : null;
 
   const watchedSupplierIds = useWatch({ control: form.control, name: 'supplierIds' }) ?? [];
+  const watchedSupplierStocks = useWatch({ control: form.control, name: 'supplierStocks' }) ?? [];
+
+  const multiSupplierTotalStock = useMemo(() => {
+    return calculateTotalSupplierStock(watchedSupplierStocks);
+  }, [watchedSupplierStocks]);
+
+  const multiSupplierWeightedCost = useMemo(() => {
+    return calculateWeightedAverageCost(watchedSupplierStocks);
+  }, [watchedSupplierStocks]);
 
   // Sync computed pack unit cost & stock quantity to form (single supplier / no supplier only)
   const handlePackCalculationSync = (
@@ -231,6 +240,7 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
                 ))}
               </div>
 
+              {/* Pack Purchase Cost & Packs in Stock */}
               <div className="grid grid-cols-2 gap-2.5">
                 {/* Total Pack Purchase Cost */}
                 <FormField control={form.control} name="packPurchaseCost" render={({ field }) => (
@@ -265,12 +275,13 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
                 <FormField control={form.control} name="packQuantity" render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-[11px] font-medium text-muted-foreground">
-                      Packs in Stock
+                      {isMultiSupplier ? `Total ${packUnit || 'Pack'}s Pool` : 'Packs in Stock'}
                     </FormLabel>
                     <FormControl>
                       <Input
                         type="number"
                         min={0}
+                        step="any"
                         placeholder="1"
                         {...field}
                         value={field.value ?? ''}
@@ -287,35 +298,85 @@ export const PricingSection = React.memo(({ form, hasExpiry, averagePurchaseRate
                 )} />
               </div>
 
-              {/* Live Calculation Banner */}
-              {computedPerUnit !== null && (
-                <div className="rounded-xl bg-primary/10 p-2.5 border border-primary/20 space-y-1.5 text-xs">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-1.5 text-primary font-medium">
-                      <Calculator className="h-3.5 w-3.5" />
-                      <span>Auto Purchase Cost / {baseUnit}:</span>
+              {/* Single-supplier live calculation banner */}
+              {!isMultiSupplier ? (
+                computedPerUnit !== null && (
+                  <div className="rounded-xl bg-primary/10 p-2.5 border border-primary/20 space-y-1.5 text-xs">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5 text-primary font-medium">
+                        <Calculator className="h-3.5 w-3.5" />
+                        <span>Auto Purchase Cost / {baseUnit}:</span>
+                      </div>
+                      <div className="font-bold text-primary tabular-nums">
+                        Rs. {computedPerUnit.toFixed(2)}
+                        <span className="text-[10px] font-normal opacity-80 ml-1">
+                          (Rs. {packPurchaseCost} ÷ {packSize})
+                        </span>
+                      </div>
                     </div>
-                    <div className="font-bold text-primary tabular-nums">
-                      Rs. {computedPerUnit.toFixed(2)}
-                      <span className="text-[10px] font-normal opacity-80 ml-1">
-                        (Rs. {packPurchaseCost} ÷ {packSize})
-                      </span>
+
+                    {computedTotalStock !== null && (
+                      <div className="flex items-center justify-between border-t border-primary/15 pt-1 text-[11px]">
+                        <span className="text-muted-foreground flex items-center gap-1">
+                          <Boxes className="h-3 w-3 text-primary" /> Auto Current Stock:
+                        </span>
+                        <span className="font-bold text-foreground tabular-nums">
+                          {computedTotalStock} {baseUnit}
+                          <span className="text-[10px] font-normal text-muted-foreground ml-1">
+                            ({packQuantity || 1} {packUnit || 'pack'}(s) × {packSize})
+                          </span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                )
+              ) : (
+                /* Multi-Supplier Pack Procurement Summary Card */
+                <div className="rounded-xl bg-blue-50/70 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-800/60 p-3 space-y-2.5 text-xs text-blue-900 dark:text-blue-200">
+                  <div className="flex items-center justify-between font-semibold">
+                    <span className="flex items-center gap-1.5">
+                      <Boxes className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                      Multi-Supplier Pack Procurement
+                    </span>
+                    <span className="text-[11px] bg-blue-100 dark:bg-blue-900/60 text-blue-800 dark:text-blue-200 px-2 py-0.5 rounded-full">
+                      1 {packUnit || 'pack'} = {Number(packSize) > 0 ? packSize : 1} {baseUnit}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-2 bg-background/80 dark:bg-background/40 p-2.5 rounded-lg border border-blue-200/50 dark:border-blue-800/40">
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase font-medium">Aggregated Stock</p>
+                      <p className="text-sm font-bold text-foreground">
+                        {Math.round(((multiSupplierTotalStock / (Number(packSize) > 0 ? Number(packSize) : 1))) * 100) / 100} {packUnit || 'pack'}(s)
+                        <span className="text-[11px] font-normal text-muted-foreground ml-1">
+                          ({multiSupplierTotalStock} {baseUnit})
+                        </span>
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-muted-foreground uppercase font-medium">Weighted Avg. Cost</p>
+                      <p className="text-sm font-bold text-foreground">
+                        Rs. {multiSupplierWeightedCost.toFixed(2)}
+                        <span className="text-[10px] font-normal text-muted-foreground ml-1">
+                          / {baseUnit}
+                        </span>
+                      </p>
                     </div>
                   </div>
 
-                  {computedTotalStock !== null && (
-                    <div className="flex items-center justify-between border-t border-primary/15 pt-1 text-[11px]">
-                      <span className="text-muted-foreground flex items-center gap-1">
-                        <Boxes className="h-3 w-3 text-primary" /> Auto Current Stock:
-                      </span>
-                      <span className="font-bold text-foreground tabular-nums">
-                        {computedTotalStock} {baseUnit}
-                        <span className="text-[10px] font-normal text-muted-foreground ml-1">
-                          ({packQuantity || 1} {packUnit || 'pack'}(s) × {packSize})
-                        </span>
-                      </span>
-                    </div>
-                  )}
+                  <div className="flex items-center justify-between pt-0.5 text-[11px] text-blue-700 dark:text-blue-300">
+                    <span>💡 Stock is partitioned across suppliers below. Enter cartons per supplier.</span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const el = document.getElementById('supplier-section');
+                        if (el) el.scrollIntoView({ behavior: 'smooth' });
+                      }}
+                      className="shrink-0 underline font-semibold hover:text-blue-800 dark:hover:text-blue-100 ml-2"
+                    >
+                      Go to Suppliers ↓
+                    </button>
+                  </div>
                 </div>
               )}
             </div>

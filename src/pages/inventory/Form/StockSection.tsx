@@ -96,22 +96,36 @@ export const StockSection = React.memo(({
   const isPackActive = Boolean(watchedPackSize && Number(watchedPackSize) > 0);
 
   // Summary chip used in managed-stock modes
-  const SummaryChip = ({ label, qty, accent = false }: { label: string; qty: number; accent?: boolean }) => (
-    <div className={cn(
-      'flex items-center justify-between rounded-2xl px-4 py-3 border',
-      accent
-        ? 'bg-primary/5 border-primary/20'
-        : 'bg-muted/40 border-border'
-    )}>
-      <div className="flex items-center gap-2">
-        <Package className={cn('h-4 w-4', accent ? 'text-primary' : 'text-muted-foreground')} />
-        <span className={cn('text-sm', accent ? 'text-primary font-medium' : 'text-muted-foreground')}>{label}</span>
+  const SummaryChip = ({ label, qty, accent = false }: { label: string; qty: number; accent?: boolean }) => {
+    const safePSize = (watchedPackSize && Number(watchedPackSize) > 0) ? Number(watchedPackSize) : 1;
+    const packEquivalent = isPackActive
+      ? Math.round((qty / safePSize) * 100) / 100
+      : null;
+
+    return (
+      <div className={cn(
+        'flex items-center justify-between rounded-2xl px-4 py-3 border',
+        accent
+          ? 'bg-primary/5 border-primary/20'
+          : 'bg-muted/40 border-border'
+      )}>
+        <div className="flex items-center gap-2">
+          <Package className={cn('h-4 w-4', accent ? 'text-primary' : 'text-muted-foreground')} />
+          <span className={cn('text-sm', accent ? 'text-primary font-medium' : 'text-muted-foreground')}>{label}</span>
+        </div>
+        <div className="text-right">
+          <span className={cn('text-lg font-bold tabular-nums', accent ? 'text-primary' : 'text-foreground')}>
+            {qty} <span className="text-sm font-normal text-muted-foreground">{watchedUnit}</span>
+          </span>
+          {packEquivalent !== null && (
+            <p className="text-[11px] text-muted-foreground font-normal">
+              ≈ {packEquivalent} {watchedPackUnit || 'pack'}(s)
+            </p>
+          )}
+        </div>
       </div>
-      <span className={cn('text-lg font-bold tabular-nums', accent ? 'text-primary' : 'text-foreground')}>
-        {qty} <span className="text-sm font-normal text-muted-foreground">{watchedUnit}</span>
-      </span>
-    </div>
-  );
+    );
+  };
 
   return (
     <section className="px-4 py-4 space-y-4">
