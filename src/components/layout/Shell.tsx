@@ -20,7 +20,7 @@ export function Shell({ children }: { children: React.ReactNode }) {
         <DesktopSidebar />
         <main
           key={location}
-          className="flex-1 md:pl-64 pb-16 md:pb-0 w-full overflow-x-hidden animate-in fade-in-50 duration-200"
+          className="flex-1 md:pl-64 pb-nav-safe md:pb-0 w-full overflow-x-hidden animate-in fade-in-50 duration-200"
         >
           {children}
         </main>

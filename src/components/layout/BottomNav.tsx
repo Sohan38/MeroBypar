@@ -24,7 +24,8 @@ export function BottomNav() {
   return (
     <nav
       aria-label="Mobile Navigation"
-      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/85 backdrop-blur-xl border-t border-border/60 pb-safe shadow-[0_-4px_24px_rgba(0,0,0,0.06)]"
+      className="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-card/85 backdrop-blur-xl border-t border-border/60 shadow-[0_-4px_24px_rgba(0,0,0,0.06)]"
+      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}
     >
       <div className="flex items-center justify-around h-16 px-2 max-w-lg mx-auto">
         {navItems.map((item) => {
@@ -54,7 +55,12 @@ export function BottomNav() {
                   <motion.span
                     layoutId="bottomNavPill"
                     className="absolute -top-1.5 w-7 h-1 rounded-full bg-primary shadow-[0_0_8px_hsl(var(--primary)/0.5)]"
-                    transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+                    transition={{
+                      type: 'spring',
+                      stiffness: 420,
+                      damping: 30,
+                      mass: 0.8,
+                    }}
                   />
                 )}
 

@@ -23,7 +23,7 @@ export const ProductCard = memo(function ProductCard({
 
     return (
         <Card
-            className="group cursor-pointer hover:border-primary/50 hover:shadow-xs transition-all duration-150 active:scale-[0.96] select-none overflow-hidden bg-card border-border/70 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.02)]"
+            className="group cursor-pointer hover:border-primary/50 hover:shadow-xs transition-transform duration-100 will-change-transform active:scale-[0.96] select-none overflow-hidden bg-card border-border/70 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.02)]"
             onClick={handleClick}
         >
             <CardContent className="p-3 text-left flex flex-col justify-between h-full space-y-2">

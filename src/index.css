@@ -312,6 +312,13 @@
   .pr-safe {
     padding-right: max(env(safe-area-inset-right), 0px);
   }
+
+  /* Mobile main content: account for bottom nav (64px) + gesture bar */
+  @media (max-width: 767px) {
+    .pb-nav-safe {
+      padding-bottom: calc(4rem + env(safe-area-inset-bottom, 0px));
+    }
+  }
   input[type='search']::-webkit-search-cancel-button {
     @apply hidden;
   }
