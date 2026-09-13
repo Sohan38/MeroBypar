@@ -106,6 +106,7 @@ export function useInventoryForm(
             brand: existingProduct.brand ?? '',
             notes: existingProduct.notes ?? '',
             imageBase64: existingProduct.imageBase64 ?? '',
+            isPackPricingEnabled: Boolean(existingProduct.packSize && existingProduct.packSize > 0),
             packSize: existingProduct.packSize ?? null,
             packUnit: existingProduct.packUnit ?? '',
             packPurchaseCost: existingProduct.packPurchaseCost ?? null,
@@ -123,6 +124,7 @@ export function useInventoryForm(
                 ? [{ supplierId: supplierIdFromQuery, locationId: 'loc-default', cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined, notes: '' }]
                 : [],
             unit: 'pcs',
+            isPackPricingEnabled: false,
             packSize: null,
             packUnit: '',
             packPurchaseCost: null,
@@ -399,16 +401,40 @@ export function useInventoryForm(
         }));
     };
 
+    const syncBatchPacksToForm = useCallback((batches: ProductBatch[]) => {
+        const pSize = Number(form.getValues('packSize'));
+        if (pSize > 0) {
+            const totalQty = batches.reduce((s, b) => s + Number(b.quantity || 0), 0);
+            const totalPacks = Math.floor(totalQty / pSize);
+            form.setValue('packQuantity', totalPacks, { shouldDirty: true });
+
+            const totalCost = batches.reduce((s, b) => s + (Number(b.quantity || 0) * Number(b.purchaseRate || 0)), 0);
+            if (totalQty > 0) {
+                const avgRate = totalCost / totalQty;
+                form.setValue('packPurchaseCost', Math.round(avgRate * pSize * 100) / 100, { shouldDirty: true });
+            }
+        }
+    }, [form]);
+
     const handleAddBatch = useCallback(() => { setEditingBatch(null); setBatchDialogOpen(true); }, []);
     const handleEditBatch = useCallback((batch: ProductBatch) => { setEditingBatch(batch); setBatchDialogOpen(true); }, []);
-    const handleDeleteBatch = useCallback((bid: string) => { setLocalBatches(prev => prev.filter(b => b.id !== bid)); }, []);
+    const handleDeleteBatch = useCallback((bid: string) => {
+        setLocalBatches(prev => {
+            const updated = prev.filter(b => b.id !== bid);
+            syncBatchPacksToForm(updated);
+            return updated;
+        });
+    }, [syncBatchPacksToForm]);
 
     const handleSaveBatch = (batchData: BatchFormData) => {
+        let updated: ProductBatch[];
         if (editingBatch) {
-            setLocalBatches(prev => prev.map(b => b.id === editingBatch.id ? { ...b, ...batchData } : b));
+            updated = localBatches.map(b => b.id === editingBatch.id ? { ...b, ...batchData } : b);
         } else {
-            setLocalBatches(prev => [...prev, { ...batchData, id: uuidv4(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), deletedAt: null, version: 1 }]);
+            updated = [...localBatches, { ...batchData, id: uuidv4(), createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(), deletedAt: null, version: 1 }];
         }
+        setLocalBatches(updated);
+        syncBatchPacksToForm(updated);
         setBatchDialogOpen(false);
         setEditingBatch(null);
     };
@@ -473,12 +499,21 @@ export function useInventoryForm(
                 };
             });
 
+            const calculatedPacksCount = (data.hasExpiry && safeSize > 0)
+                ? Math.floor(calculatedStock / safeSize)
+                : data.packQuantity;
+            const calculatedPackCostVal = (data.hasExpiry && safeSize > 0 && effectivePurchaseRate > 0)
+                ? safeCurrency(effectivePurchaseRate * safeSize)
+                : data.packPurchaseCost;
+
             const productData = {
                 ...data,
                 // Intentionally keep new product quantity at zero until the opening purchase
                 // adds the stock once. This avoids double-counting when the purchase logic
                 // increments both product.quantity and supplier stock for the same incoming stock.
                 quantity: isNew ? 0 : calculatedStock,
+                packQuantity: calculatedPacksCount,
+                packPurchaseCost: calculatedPackCostVal,
                 barcode: data.barcode?.trim() ?? '',
                 brand: data.brand ?? '',
                 supplierId: resolvedSupplierIds[0] ?? '',
@@ -529,6 +564,10 @@ export function useInventoryForm(
                                     batchId: batch.id, batchNumber: batch.batchNumber,
                                     manufacturingDate: batch.manufacturingDate, expiryMonths: batch.expiryMonths, expiryDate: batch.expiryDate,
                                     locationId: batchLocationId,
+                                    packQuantity: data.packSize && safeSize > 0 ? Math.floor(qty / safeSize) : undefined,
+                                    packCost: data.packSize && safeSize > 0 ? safeCurrency(rate * safeSize) : undefined,
+                                    packUnit: data.packUnit || undefined,
+                                    packSize: data.packSize || undefined,
                                 });
                             }
                         } else if (shouldCreateSupplierPurchases) {

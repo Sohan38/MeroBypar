@@ -30,8 +30,10 @@ import {
   Save,
   Wand2,
   X,
+  Boxes,
 } from 'lucide-react';
 import { ProductBatch, Supplier, BatchFormData } from '@/types';
+import { cn } from '@/lib/utils';
 import {
   addMonths,
   format as fmtDate,
@@ -173,6 +175,10 @@ interface BatchFormDialogProps {
     invoiceNumber?: string | null;
     date?: string | null;
   }>;
+  packSize?: number | null;
+  packUnit?: string | null;
+  baseUnit?: string | null;
+  onUpdatePack?: (size: number, unit: string) => void;
 }
 
 export function BatchFormDialog({
@@ -187,7 +193,21 @@ export function BatchFormDialog({
   productName,
   existingBatches = [],
   existingPurchases = [],
+  packSize,
+  packUnit,
+  baseUnit,
+  onUpdatePack,
 }: BatchFormDialogProps) {
+  const hasPack = Boolean(packSize && Number(packSize) > 0);
+  const safePackSize = hasPack ? Number(packSize) : 1;
+  const pUnit = packUnit || 'pack';
+  const bUnit = baseUnit || 'pcs';
+
+  const [batchUnitMode, setBatchUnitMode] = useState<'pack' | 'base'>('pack');
+  const [packQtyInput, setPackQtyInput] = useState<string>('1');
+  const [packRateInput, setPackRateInput] = useState<string>('');
+  const [showInlinePackSetup, setShowInlinePackSetup] = useState(false);
+  const [inlinePackSize, setInlinePackSize] = useState<string>('30');
   const [previewExpiry, setPreviewExpiry] = useState<string | null>(null);
   const [filterQuery, setFilterQuery] = useState('');
   const [supplierInvoiceNumber, setSupplierInvoiceNumber] = useState('');
@@ -226,7 +246,7 @@ export function BatchFormDialog({
       expiryMode: editBatch?.expiryMonths ? 'months' : 'manual',
       expiryMonths: editBatch?.expiryMonths ?? undefined,
       expiryDate: editBatch?.expiryDate?.split('T')[0] ?? '',
-      initialQuantity: editBatch?.initialQuantity ?? 1,
+      initialQuantity: editBatch?.initialQuantity ?? (hasPack ? safePackSize : 1),
       purchaseRate: editBatch?.purchaseRate ?? 0,
       notes: editBatch?.notes ?? '',
     },
@@ -265,6 +285,9 @@ export function BatchFormDialog({
   useEffect(() => {
     if (!open) return;
 
+    const initialQty = editBatch?.initialQuantity ?? (hasPack ? safePackSize : 1);
+    const initialRate = editBatch?.purchaseRate ?? 0;
+
     form.reset({
       supplierId: editBatch?.supplierId ?? '',
       batchNumber: editBatch?.batchNumber ?? nextBatchNumber,
@@ -273,10 +296,24 @@ export function BatchFormDialog({
       expiryMode: editBatch?.expiryMonths ? 'months' : 'manual',
       expiryMonths: editBatch?.expiryMonths ?? undefined,
       expiryDate: editBatch?.expiryDate?.split('T')[0] ?? '',
-      initialQuantity: editBatch?.initialQuantity ?? 1,
-      purchaseRate: editBatch?.purchaseRate ?? 0,
+      initialQuantity: initialQty,
+      purchaseRate: initialRate,
       notes: editBatch?.notes ?? '',
     });
+
+    if (hasPack) {
+      setBatchUnitMode('pack');
+      const pQty = safePackSize > 0 ? (initialQty / safePackSize) : 1;
+      setPackQtyInput(pQty % 1 === 0 ? pQty.toString() : pQty.toFixed(2));
+      const pRate = safePackSize > 0 && initialRate > 0 ? (initialRate * safePackSize) : 0;
+      setPackRateInput(pRate > 0 ? (pRate % 1 === 0 ? pRate.toString() : pRate.toFixed(2)) : '');
+    } else {
+      setBatchUnitMode('base');
+      setPackQtyInput('1');
+      setPackRateInput('');
+    }
+
+    setShowInlinePackSetup(false);
 
     // For edit mode, restore the supplier invoice.
     // For add mode, clear it until a supplier is picked.
@@ -293,6 +330,8 @@ export function BatchFormDialog({
     editBatchInvoiceNumber,
     nextBatchNumber,
     form,
+    hasPack,
+    safePackSize,
   ]);
 
   // When adding, auto‑generate batch number & invoice on supplier selection
@@ -654,86 +693,252 @@ export function BatchFormDialog({
               />
             )}
 
+            {/* Inline carton setup prompt if not yet enabled */}
+            {!hasPack && isNew && onUpdatePack && (
+              <div className="p-2.5 rounded-xl bg-muted/40 border text-xs space-y-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-muted-foreground">
+                    <Boxes className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span className="font-medium text-foreground">Receiving in Cartons / Bulk?</span>
+                  </div>
+                  {!showInlinePackSetup ? (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-6 text-[11px] px-2"
+                      onClick={() => setShowInlinePackSetup(true)}
+                    >
+                      Enable Cartons
+                    </Button>
+                  ) : null}
+                </div>
+                {showInlinePackSetup && (
+                  <div className="flex items-center gap-2 pt-1 border-t border-border/60">
+                    <span className="text-[11px] text-muted-foreground shrink-0">1 carton =</span>
+                    <Input
+                      type="number"
+                      min={2}
+                      placeholder="e.g. 30"
+                      value={inlinePackSize}
+                      onChange={(e) => setInlinePackSize(e.target.value)}
+                      className="h-7 text-xs w-24 bg-background"
+                      autoFocus
+                    />
+                    <span className="text-[11px] text-muted-foreground shrink-0">{bUnit}</span>
+                    <Button
+                      type="button"
+                      size="sm"
+                      className="h-7 text-xs px-2.5 ml-auto"
+                      onClick={() => {
+                        const sz = Number(inlinePackSize);
+                        if (sz > 1) {
+                          onUpdatePack(sz, 'carton');
+                        }
+                      }}
+                    >
+                      Apply
+                    </Button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Pack Mode Switcher / Conversion Header */}
+            {hasPack && (
+              <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-muted/40 border text-xs">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <Boxes className="h-3.5 w-3.5 text-primary shrink-0" />
+                  <span className="font-semibold text-foreground truncate">
+                    1 {pUnit} = {safePackSize} {bUnit}
+                  </span>
+                </div>
+                <div className="flex items-center gap-1 bg-background p-0.5 rounded-lg border shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBatchUnitMode('pack');
+                      const curQty = Number(form.getValues('initialQuantity')) || 0;
+                      const pQ = safePackSize > 0 ? curQty / safePackSize : 1;
+                      setPackQtyInput(pQ % 1 === 0 ? pQ.toString() : pQ.toFixed(2));
+                      const curRate = Number(form.getValues('purchaseRate')) || 0;
+                      const pR = safePackSize > 0 && curRate > 0 ? curRate * safePackSize : 0;
+                      setPackRateInput(pR > 0 ? (pR % 1 === 0 ? pR.toString() : pR.toFixed(2)) : '');
+                    }}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition-all",
+                      batchUnitMode === 'pack'
+                        ? "bg-primary text-primary-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    By {pUnit}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setBatchUnitMode('base')}
+                    className={cn(
+                      "px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition-all",
+                      batchUnitMode === 'base'
+                        ? "bg-primary text-primary-foreground shadow-xs"
+                        : "text-muted-foreground hover:text-foreground"
+                    )}
+                  >
+                    By {bUnit}
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="grid grid-cols-2 gap-3">
               <FormField
                 control={form.control}
                 name="initialQuantity"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Quantity *
-                    </FormLabel>
+                render={({ field }) => {
+                  const currentQtyVal = Number(field.value) || 0;
 
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min={1}
-                        placeholder="0"
-                        {...field}
-                        value={
-                          field.value === 0 ? '' : field.value
-                        }
-                        onChange={(event) =>
-                          field.onChange(
-                            event.target.value === ''
-                              ? 0
-                              : Number(event.target.value),
-                          )
-                        }
-                        className="h-9"
-                        readOnly={!isNew}
-                        disabled={!isNew}
-                      />
-                    </FormControl>
+                  return (
+                    <FormItem>
+                      <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center justify-between">
+                        <span>{hasPack && batchUnitMode === 'pack' ? `${pUnit}s *` : 'Quantity *'}</span>
+                        {hasPack && batchUnitMode === 'pack' && currentQtyVal > 0 && (
+                          <span className="text-[10px] font-normal lowercase tracking-normal tabular-nums">
+                            = {currentQtyVal} {bUnit}
+                          </span>
+                        )}
+                      </FormLabel>
 
-                    {!isNew && (
-                      <p className="text-[10px] text-muted-foreground mt-1">
-                        Stock adjustments are managed separately for existing products.
-                      </p>
-                    )}
+                      <FormControl>
+                        {hasPack && batchUnitMode === 'pack' ? (
+                          <Input
+                            type="number"
+                            min="0.01"
+                            step="any"
+                            placeholder="1"
+                            value={packQtyInput}
+                            onChange={(event) => {
+                              const text = event.target.value;
+                              setPackQtyInput(text);
+                              const num = text === '' ? 0 : Number(text);
+                              const basePcs = Math.round(num * safePackSize * 1000) / 1000;
+                              field.onChange(basePcs);
+                            }}
+                            className="h-9"
+                            readOnly={!isNew}
+                            disabled={!isNew}
+                          />
+                        ) : (
+                          <Input
+                            type="number"
+                            min="1"
+                            step="any"
+                            placeholder="0"
+                            value={field.value === 0 ? '' : field.value}
+                            onChange={(event) => {
+                              const rawVal = event.target.value === '' ? 0 : Number(event.target.value);
+                              field.onChange(rawVal);
+                              if (safePackSize > 0) {
+                                const pQ = rawVal / safePackSize;
+                                setPackQtyInput(pQ % 1 === 0 ? pQ.toString() : pQ.toFixed(2));
+                              }
+                            }}
+                            className="h-9"
+                            readOnly={!isNew}
+                            disabled={!isNew}
+                          />
+                        )}
+                      </FormControl>
 
-                    <FormMessage />
-                  </FormItem>
-                )}
+                      {!isNew && (
+                        <p className="text-[10px] text-muted-foreground mt-1">
+                          Stock adjustments are managed separately for existing products.
+                        </p>
+                      )}
+
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
               />
 
               <FormField
                 control={form.control}
                 name="purchaseRate"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
-                      Purchase Rate
-                    </FormLabel>
+                render={({ field }) => {
+                  const currentRateVal = Number(field.value) || 0;
 
-                    <FormControl>
-                      <Input
-                        type="number"
-                        min={0}
-                        step="0.01"
-                        placeholder="0.00"
-                        {...field}
-                        value={
-                          field.value === 0 ? '' : field.value
-                        }
-                        onChange={(event) =>
-                          field.onChange(
-                            event.target.value === ''
-                              ? 0
-                              : Number(event.target.value),
-                          )
-                        }
-                        className="h-9"
-                        readOnly={!isNew}
-                        disabled={!isNew}
-                      />
-                    </FormControl>
+                  return (
+                    <FormItem>
+                      <FormLabel className="text-xs font-semibold text-muted-foreground uppercase tracking-wide flex items-center justify-between">
+                        <span>{hasPack && batchUnitMode === 'pack' ? `Cost / ${pUnit}` : 'Purchase Rate'}</span>
+                        {hasPack && batchUnitMode === 'pack' && currentRateVal > 0 && (
+                          <span className="text-[10px] font-normal lowercase tracking-normal tabular-nums">
+                            Rs. {currentRateVal.toFixed(2)}/{bUnit}
+                          </span>
+                        )}
+                      </FormLabel>
 
-                    <FormMessage />
-                  </FormItem>
-                )}
+                      <FormControl>
+                        {hasPack && batchUnitMode === 'pack' ? (
+                          <Input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            placeholder="0.00"
+                            value={packRateInput}
+                            onChange={(event) => {
+                              const text = event.target.value;
+                              setPackRateInput(text);
+                              const num = text === '' ? 0 : Number(text);
+                              const baseCost = safePackSize > 0 ? (num / safePackSize) : 0;
+                              field.onChange(Math.round(baseCost * 100) / 100);
+                            }}
+                            className="h-9"
+                            readOnly={!isNew}
+                            disabled={!isNew}
+                          />
+                        ) : (
+                          <Input
+                            type="number"
+                            min={0}
+                            step="0.01"
+                            placeholder="0.00"
+                            value={field.value === 0 ? '' : field.value}
+                            onChange={(event) => {
+                              const rawVal = event.target.value === '' ? 0 : Number(event.target.value);
+                              field.onChange(rawVal);
+                              if (safePackSize > 0 && rawVal > 0) {
+                                const pR = rawVal * safePackSize;
+                                setPackRateInput(pR % 1 === 0 ? pR.toString() : pR.toFixed(2));
+                              }
+                            }}
+                            className="h-9"
+                            readOnly={!isNew}
+                            disabled={!isNew}
+                          />
+                        )}
+                      </FormControl>
+
+                      <FormMessage />
+                    </FormItem>
+                  );
+                }}
               />
             </div>
+
+            {(Number(form.watch('initialQuantity') || 0) > 0) && (Number(form.watch('purchaseRate') || 0) > 0) && (
+              <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-muted/30 border text-xs">
+                <span className="text-muted-foreground">Batch Total Cost:</span>
+                <span className="font-bold text-foreground tabular-nums">
+                  Rs. {(Number(form.watch('initialQuantity') || 0) * Number(form.watch('purchaseRate') || 0)).toFixed(2)}
+                  {hasPack && batchUnitMode === 'pack' && Number(packQtyInput) > 0 && (
+                    <span className="text-[10px] font-normal text-muted-foreground ml-1.5">
+                      ({packQtyInput} {pUnit}{Number(packQtyInput) === 1 ? '' : 's'} × Rs. {packRateInput || 0})
+                    </span>
+                  )}
+                </span>
+              </div>
+            )}
 
             <FormField
               control={form.control}

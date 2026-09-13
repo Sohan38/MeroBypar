@@ -284,6 +284,14 @@ export default function InventoryForm() {
         productName={form.getValues('name') || ''}
         existingBatches={localBatches}
         existingPurchases={purchases}
+        packSize={form.watch('packSize')}
+        packUnit={form.watch('packUnit')}
+        baseUnit={form.watch('unit')}
+        onUpdatePack={(size, unit) => {
+          form.setValue('isPackPricingEnabled', true, { shouldDirty: true });
+          form.setValue('packSize', size, { shouldDirty: true });
+          form.setValue('packUnit', unit, { shouldDirty: true });
+        }}
       />
 
       {/* Supplier dialog */}

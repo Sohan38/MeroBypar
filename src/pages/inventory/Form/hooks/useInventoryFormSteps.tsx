@@ -4,6 +4,7 @@ import { CheckCircle2, AlertTriangle } from 'lucide-react';
 import { UseFormReturn } from 'react-hook-form';
 import { ProductFormValues } from '../types';
 import { ProductIdentitySection } from '../ProductIdentitySection';
+import { PackPricingSection } from '../PackPricingSection';
 import { BatchSection } from '../BatchSection';
 import { VariantSection } from '../VariantSection';
 import { SupplierSection } from '../SupplierSection';
@@ -100,6 +101,15 @@ export function useInventoryFormSteps(
             label: 'Inventory',
             content: (
                 <>
+                    <PackPricingSection
+                        form={form}
+                        hasExpiry={hasExpiry}
+                        averagePurchaseRate={averagePurchaseRate}
+                        isMultiSupplier={isMultiSupplier}
+                        isNew={isNew}
+                        totalBatchQuantity={totalBatchQuantity}
+                    />
+                    <Separator className="my-0" />
                     <BatchSection
                         form={form}
                         isExpiryEnabled={isExpiryEnabled}
@@ -121,7 +131,7 @@ export function useInventoryFormSteps(
                     />
                 </>
             ),
-            fields: ['hasExpiry', 'hasVariants', 'variants'],
+            fields: ['packSize', 'packUnit', 'packPurchaseCost', 'packQuantity', 'hasExpiry', 'hasVariants', 'variants'],
         });
 
         result.push({
@@ -150,7 +160,7 @@ export function useInventoryFormSteps(
                     />
                 </>
             ),
-            fields: ['purchaseRate', 'sellingRate', 'packSize', 'packUnit', 'packPurchaseCost', 'quantity', 'minimumStock'],
+            fields: ['purchaseRate', 'sellingRate', 'quantity', 'minimumStock'],
         });
 
         if (!hasExpiry) {

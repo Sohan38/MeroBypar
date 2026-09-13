@@ -3,10 +3,11 @@ import { FormField } from '@/components/ui/form';
 import { Switch } from '@/components/ui/switch';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { FlaskConical, Info, Plus, Pencil, Trash2 } from 'lucide-react';
+import { FlaskConical, Info, Plus, Pencil, Trash2, Boxes } from 'lucide-react';
 import { SectionProps } from './types';
 import { ProductBatch } from '@/types';
 import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
+import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 
 interface BatchSectionProps extends SectionProps {
@@ -38,6 +39,15 @@ export const BatchSection = React.memo(({
   const sortedBatches = [...localBatches].sort(
     (a, b) => (a.expiryDate ?? '').localeCompare(b.expiryDate ?? '')
   );
+
+  const packSize = form.watch('packSize');
+  const packUnit = form.watch('packUnit') || 'pack';
+  const baseUnit = form.watch('unit') || 'pcs';
+  const isPackPricingEnabled = form.watch('isPackPricingEnabled');
+  const hasPack = Boolean((isPackPricingEnabled || packSize) && Number(packSize) > 0);
+  const safePSize = hasPack ? Number(packSize) : 1;
+  const totalBatchQuantity = sortedBatches.reduce((s, b) => s + (Number(b.quantity) || 0), 0);
+  const totalBatchPacks = hasPack && safePSize > 0 ? Math.floor(totalBatchQuantity / safePSize) : 0;
 
   return (
     <section className="px-4 py-4 space-y-4">
@@ -82,12 +92,19 @@ export const BatchSection = React.memo(({
 
           <div className="space-y-2.5">
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
-                Batches
-                {sortedBatches.length > 0 && (
-                  <Badge variant="secondary" className="ml-2 text-[10px] px-1.5 py-0">{sortedBatches.length}</Badge>
+              <div>
+                <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">
+                  Batches
+                  {sortedBatches.length > 0 && (
+                    <Badge variant="secondary" className="ml-2 text-[10px] px-1.5 py-0">{sortedBatches.length}</Badge>
+                  )}
+                </span>
+                {sortedBatches.length > 0 && hasPack && (
+                  <p className="text-[11px] text-muted-foreground mt-0.5">
+                    Total: <strong className="text-foreground">{totalBatchPacks} {packUnit}{totalBatchPacks === 1 ? '' : 's'}</strong> ({totalBatchQuantity} {baseUnit})
+                  </p>
                 )}
-              </span>
+              </div>
               {isNew && (
                 <Button
                   type="button"
@@ -121,9 +138,24 @@ export const BatchSection = React.memo(({
                         <span className="text-sm font-semibold">{batch.batchNumber}</span>
                         {batch.expiryDate && <ExpiryBadge expiryDate={batch.expiryDate} />}
                       </div>
-                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground">
-                        <span>Qty: <strong className="text-foreground">{batch.quantity}</strong></span>
-                        <span>Cost: <strong className="text-foreground">Rs. {batch.purchaseRate.toFixed(1)}</strong></span>
+                      <div className="flex items-center gap-3 mt-1 text-xs text-muted-foreground flex-wrap">
+                        <span>
+                          Qty: <strong className="text-foreground">{batch.quantity} {baseUnit}</strong>
+                          {hasPack && (
+                            <span className="text-[11px] opacity-80 ml-1">
+                              ({Math.floor(batch.quantity / safePSize)} {packUnit}{Math.floor(batch.quantity / safePSize) === 1 ? '' : 's'}
+                              {batch.quantity % safePSize > 0 ? ` + ${batch.quantity % safePSize} ${baseUnit}` : ''})
+                            </span>
+                          )}
+                        </span>
+                        <span>
+                          Cost: <strong className="text-foreground">Rs. {batch.purchaseRate.toFixed(2)}</strong>/{baseUnit}
+                          {hasPack && Number(batch.purchaseRate) > 0 && (
+                            <span className="text-[11px] opacity-80 ml-1">
+                              (Rs. {(Number(batch.purchaseRate) * safePSize).toFixed(2)}/{packUnit})
+                            </span>
+                          )}
+                        </span>
                       </div>
                     </div>
                     <div className="flex items-center gap-0.5 shrink-0">

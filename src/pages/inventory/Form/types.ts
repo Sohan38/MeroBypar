@@ -64,6 +64,7 @@ export const productSchema = z.object({
     .min(0.01, 'Selling price must be greater than zero'),
 
   // Pack / Bulk pricing (optional)
+  isPackPricingEnabled: z.boolean().optional(),
   packSize: z.coerce.number().min(1, 'Pack size must be at least 1').optional().nullable(),
   packUnit: z.string().max(50).optional().nullable(),
   packPurchaseCost: z.coerce.number().min(0, 'Pack cost cannot be negative').optional().nullable(),
