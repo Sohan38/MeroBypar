@@ -4,6 +4,7 @@ import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
+import { Haptics } from '@/services/haptics';
 
 export function TopNav() {
   const { settings, theme, setTheme, currentUser } = useApp();
@@ -13,6 +14,7 @@ export function TopNav() {
   const isRootTab = location === '/' || location === '/sales' || location === '/inventory' || location === '/accounts' || location === '/more' || location === '/extras';
 
   const handleBack = () => {
+    Haptics.light();
     if (window.history.length > 1) {
       window.history.back();
     } else {
@@ -21,13 +23,14 @@ export function TopNav() {
   };
 
   const toggleTheme = () => {
+    Haptics.light();
     if (theme === 'light') setTheme('dark');
     else if (theme === 'dark') setTheme('system');
     else setTheme('light');
   };
 
   return (
-    <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between border-b border-border/70 bg-card/90 backdrop-blur-md px-3 sm:px-4 md:h-16 lg:px-6 pt-safe transition-all">
+    <header className="sticky top-0 z-40 flex h-14 w-full items-center justify-between border-b border-border/60 bg-card/85 backdrop-blur-xl px-3 sm:px-4 md:h-16 lg:px-6 pt-safe transition-all shadow-[0_1px_8px_rgba(0,0,0,0.03)]">
       <div className="flex items-center gap-2 min-w-0">
         {!isRootTab && (
           <Button

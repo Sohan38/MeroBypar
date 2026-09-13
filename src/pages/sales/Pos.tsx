@@ -23,6 +23,7 @@ import { isProductAvailableForPOS } from '@/lib/productCapabilities';
 import { InventoryLedgerService } from '@/services/inventoryLedgerService';
 import { useStorageProvider } from '@/storage/StorageContext';
 import { FinancialPostingService } from '@/services/financialPostingService';
+import { Haptics } from '@/services/haptics';
 
 interface VariantDraft {
   productId: string;
@@ -116,6 +117,8 @@ export default function SalesPos() {
   const overlaySearchRef = useRef<HTMLInputElement>(null);
 
   useBackModal(showCustomer, () => setShowCustomer(false), 'pos-customer-sheet');
+  useBackModal(cartOpen, () => setCartOpen(false), 'pos-cart-drawer');
+  useBackModal(searchOpen, () => setSearchOpen(false), 'pos-search-overlay');
 
   // When cart drawer opens/closes, prevent body scroll
   useEffect(() => {
@@ -627,6 +630,7 @@ export default function SalesPos() {
         ], 'rw', commitSale)
         : await commitSale();
 
+      Haptics.success();
       toast.success(paymentMethod === 'credit'
         ? `Sale saved • ${format(dueAmount)} added to credit`
         : 'Sale completed!');
@@ -635,6 +639,7 @@ export default function SalesPos() {
       setPaymentMethod('cash'); setCategoryFilter('all');
       setCartOpen(false);
     } catch (e) {
+      Haptics.warning();
       toast.error('Checkout failed');
       console.error(e);
     }
@@ -808,20 +813,25 @@ export default function SalesPos() {
       )}
 
       {/* ── MOBILE CART DRAWER ─────────────────────────────────────────────────
-           Bottom sheet that slides up when cart bar is tapped.               */}
+           Native spring bottom sheet with backdrop blur and fluid gesture feel.  */}
       {cartOpen && (
         <div className="fixed inset-0 z-9998 lg:hidden flex flex-col justify-end">
-          {/* Scrim */}
+          {/* Frosted Scrim Backdrop */}
           <div
-            className="absolute inset-0 bg-black/40"
-            onClick={() => setCartOpen(false)}
+            className="absolute inset-0 bg-black/50 backdrop-blur-xs animate-in fade-in duration-200"
+            onClick={() => {
+              Haptics.light();
+              setCartOpen(false);
+            }}
           />
-          {/* Drawer panel — 85dvh max, scrollable inside */}
-          <div className="relative bg-background rounded-t-2xl flex flex-col"
-            style={{ maxHeight: '85dvh' }}>
-            {/* Drag handle */}
-            <div className="flex justify-center pt-3 pb-1 shrink-0">
-              <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
+          {/* Drawer panel — 88dvh max, spring slide up, native rounded top */}
+          <div
+            className="relative bg-card rounded-t-3xl border-t border-border/70 shadow-2xl flex flex-col overflow-hidden animate-in slide-in-from-bottom duration-300 ease-out"
+            style={{ maxHeight: '88dvh' }}
+          >
+            {/* Native Drag handle */}
+            <div className="flex justify-center pt-3 pb-1 shrink-0 cursor-grab active:cursor-grabbing">
+              <div className="w-12 h-1.5 rounded-full bg-muted-foreground/30 hover:bg-muted-foreground/50 transition-colors" />
             </div>
             <CartPanel {...cartPanelProps} inDrawer />
           </div>
@@ -962,34 +972,41 @@ export default function SalesPos() {
       </div>
 
       {/* ── MOBILE BOTTOM CART BAR ─────────────────────────────────────────── */}
-      <div className="fixed left-0 right-0 bottom-16 z-50 lg:hidden border-t bg-card shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
+      <div className="fixed left-3 right-3 bottom-18 z-30 lg:hidden">
         <button
-          className="w-full flex items-center justify-between px-4 py-3 active:bg-muted/50 transition-colors"
-          onClick={() => setCartOpen(true)}
+          className="w-full flex items-center justify-between px-4 py-3 rounded-2xl bg-card/95 backdrop-blur-md border border-border/80 shadow-[0_8px_30px_rgba(0,0,0,0.12)] active:scale-[0.98] transition-all duration-150"
+          onClick={() => {
+            Haptics.medium();
+            setCartOpen(true);
+          }}
         >
           <div className="flex items-center gap-3">
-            <div className="relative">
-              <ShoppingCart className="h-6 w-6" />
+            <div className="relative p-2 rounded-xl bg-primary/10 text-primary">
+              <ShoppingCart className="h-5 w-5" />
               {cartDisplayCount > 0 && (
-                <span className="absolute -top-2 -right-2 bg-primary text-primary-foreground text-[10px] font-bold rounded-full h-4 w-4 flex items-center justify-center leading-none">
+                <span className="absolute -top-1.5 -right-1.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center leading-none shadow-xs">
                   {cartDisplayCount > 9 ? '9+' : cartDisplayCount}
                 </span>
               )}
             </div>
             <div className="text-left">
-              <div className="text-sm font-semibold">
+              <div className="text-sm font-bold text-foreground">
                 {cartDisplayCount === 0 ? 'Cart is empty' : `${cartDisplayCount} item${cartDisplayCount !== 1 ? 's' : ''}`}
               </div>
-              {cartDisplayCount > 0 && (
-                <div className="text-xs text-muted-foreground">Tap to review & checkout</div>
+              {cartDisplayCount > 0 ? (
+                <div className="text-xs text-primary font-medium">Tap to review & checkout</div>
+              ) : (
+                <div className="text-xs text-muted-foreground">Select products to add</div>
               )}
             </div>
           </div>
           <div className="flex items-center gap-2">
             {cart.length > 0 && (
-              <span className="font-bold text-primary text-base tabular-nums">{format(grandTotal)}</span>
+              <span className="font-extrabold text-primary text-base tabular-nums">{format(grandTotal)}</span>
             )}
-            <ChevronUp className="h-4 w-4 text-muted-foreground" />
+            <div className="h-7 w-7 rounded-full bg-muted/60 flex items-center justify-center text-muted-foreground">
+              <ChevronUp className="h-4 w-4" />
+            </div>
           </div>
         </button>
       </div>

@@ -232,6 +232,7 @@
     overscroll-behavior-y: none;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    -webkit-touch-callout: none;
   }
 
   button, a, input, select, textarea {
@@ -243,9 +244,62 @@
     user-select: none;
     -webkit-user-select: none;
   }
+
+  /* Hide scrollbars on touch / mobile views for native feel */
+  @media (max-width: 768px) {
+    ::-webkit-scrollbar {
+      display: none;
+      width: 0;
+      height: 0;
+    }
+    * {
+      -ms-overflow-style: none;
+      scrollbar-width: none;
+    }
+  }
 }
 
 @layer utilities {
+  /* Native Spring & Ease Curves */
+  .ease-spring {
+    transition-timing-function: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+  .ease-native-out {
+    transition-timing-function: cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .ease-native-in-out {
+    transition-timing-function: cubic-bezier(0.65, 0, 0.35, 1);
+  }
+
+  /* GPU-Accelerated Native Touch Micro-Feedbacks (zero repaints) */
+  .press-active {
+    will-change: transform;
+    transform: translateZ(0);
+    transition: transform 120ms cubic-bezier(0.16, 1, 0.3, 1), opacity 120ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .press-active:active {
+    transform: scale3d(0.96, 0.96, 1);
+    opacity: 0.88;
+  }
+
+  .press-card {
+    will-change: transform;
+    transform: translateZ(0);
+    transition: transform 150ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .press-card:active {
+    transform: scale3d(0.975, 0.975, 1);
+  }
+
+  /* Native Hardware Accelerated Layer */
+  .gpu-layer {
+    will-change: transform, opacity;
+    transform: translate3d(0, 0, 0);
+    backface-visibility: hidden;
+    perspective: 1000px;
+  }
+
+  /* Native Safe Insets */
   .pt-safe {
     padding-top: max(env(safe-area-inset-top), 0px);
   }

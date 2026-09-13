@@ -1,7 +1,7 @@
 import { memo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
-import { Package } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Haptics } from '@/services/haptics';
 
 interface Props {
     product: any;
@@ -16,10 +16,15 @@ export const ProductCard = memo(function ProductCard({
 }: Props) {
     const isLowStock = product.quantity <= (product.minStockAlert ?? 5);
 
+    const handleClick = () => {
+        Haptics.light();
+        onClick();
+    };
+
     return (
         <Card
-            className="group cursor-pointer hover:border-primary/50 hover:shadow-xs transition-all active:scale-97 select-none overflow-hidden bg-card border-border/80"
-            onClick={onClick}
+            className="group cursor-pointer hover:border-primary/50 hover:shadow-xs transition-all duration-150 active:scale-[0.96] select-none overflow-hidden bg-card border-border/70 rounded-2xl shadow-[0_1px_3px_rgba(0,0,0,0.02)]"
+            onClick={handleClick}
         >
             <CardContent className="p-3 text-left flex flex-col justify-between h-full space-y-2">
                 <div className="space-y-1">

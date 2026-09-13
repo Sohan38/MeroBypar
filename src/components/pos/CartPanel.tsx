@@ -18,6 +18,7 @@ import { CustomerPicker } from '@/components/pos/CustomerPicker';
 import { VariantPicker } from '@/components/pos/VariantPicker';
 import { PaymentMethod, CartItem, Product } from '@/types';
 import { BankSelector } from '@/components/pos/BankSelector';
+import { Haptics } from '@/services/haptics';
 
 interface VariantDraft {
   productId: string;
@@ -308,9 +309,12 @@ export const CartPanel = React.memo(({
                 <button
                   key={m}
                   type="button"
-                  onClick={() => onSetPaymentMethod(m)}
+                  onClick={() => {
+                    Haptics.light();
+                    onSetPaymentMethod(m);
+                  }}
                   className={cn(
-                    "flex flex-col items-center justify-center h-13 gap-1 rounded-xl border text-xs font-semibold transition-all active:scale-95",
+                    "flex flex-col items-center justify-center h-13 gap-1 rounded-xl border text-xs font-semibold transition-all duration-150 active:scale-90",
                     isSelected
                       ? "bg-primary text-primary-foreground border-primary shadow-xs"
                       : "bg-background hover:bg-muted border-border text-foreground hover:border-primary/40"
@@ -408,9 +412,12 @@ export const CartPanel = React.memo(({
         {/* Primary Action Button */}
         <Button
           size="lg"
-          className="w-full h-12 text-sm font-bold shadow-md rounded-xl active:scale-98 transition-all"
+          className="w-full h-12 text-sm font-bold shadow-md rounded-2xl active:scale-[0.97] transition-all duration-150"
           disabled={cart.length === 0 || (paymentMethod !== 'credit' && paidAmount !== '' && Number(paidAmount) < grandTotal) || (paymentMethod === 'credit' && !selectedCustomerName)}
-          onClick={onCheckout}
+          onClick={() => {
+            Haptics.medium();
+            onCheckout();
+          }}
         >
           <ShoppingCart className="h-4 w-4 mr-2" />
           {paymentMethod === 'credit' ? 'Save Credit' : 'Complete Sale'} • {format(grandTotal)}
@@ -485,8 +492,11 @@ const CartItemRow = React.memo(({
           )}
         </div>
         <button
-          onClick={() => onRemove(lineKey)}
-          className="text-muted-foreground hover:text-destructive transition-colors shrink-0 p-1 -mr-1 -mt-1 rounded-md"
+          onClick={() => {
+            Haptics.light();
+            onRemove(lineKey);
+          }}
+          className="text-muted-foreground hover:text-destructive transition-colors shrink-0 p-1.5 -mr-1 -mt-1 rounded-lg active:scale-90"
           aria-label="Remove item"
         >
           <Trash2 className="h-4 w-4" />
@@ -497,8 +507,9 @@ const CartItemRow = React.memo(({
         <div className="flex items-center gap-1.5">
           <button
             type="button"
-            className="h-8 w-8 rounded-lg border bg-muted/30 flex items-center justify-center hover:bg-destructive/10 text-destructive transition-colors active:scale-95"
+            className="h-8.5 w-8.5 rounded-xl border border-border/80 bg-muted/40 flex items-center justify-center hover:bg-destructive/10 text-destructive active:scale-90 transition-all"
             onClick={() => {
+              Haptics.light();
               if (item.quantity === 1) onRemove(lineKey);
               else onUpdateQuantity(lineKey, -1);
             }}
@@ -510,7 +521,7 @@ const CartItemRow = React.memo(({
             type="text"
             inputMode="numeric"
             pattern="[0-9]*"
-            className="h-8 w-12 text-center text-sm p-0 font-bold bg-background"
+            className="h-8.5 w-12 text-center text-sm p-0 font-bold bg-background rounded-xl"
             value={draftQty}
             onFocus={e => e.target.select()}
             onChange={handleChange}
@@ -524,8 +535,11 @@ const CartItemRow = React.memo(({
           />
           <button
             type="button"
-            className="h-8 w-8 rounded-lg border bg-muted/30 flex items-center justify-center hover:bg-green-500/10 text-green-600 transition-colors active:scale-95"
-            onClick={() => onUpdateQuantity(lineKey, 1)}
+            className="h-8.5 w-8.5 rounded-xl border border-border/80 bg-muted/40 flex items-center justify-center hover:bg-green-500/10 text-green-600 active:scale-90 transition-all"
+            onClick={() => {
+              Haptics.light();
+              onUpdateQuantity(lineKey, 1);
+            }}
             aria-label="Increase quantity"
           >
             <Plus className="h-3.5 w-3.5" />
