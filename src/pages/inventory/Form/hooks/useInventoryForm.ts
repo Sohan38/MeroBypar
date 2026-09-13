@@ -98,6 +98,10 @@ export function useInventoryForm(
             brand: existingProduct.brand ?? '',
             notes: existingProduct.notes ?? '',
             imageBase64: existingProduct.imageBase64 ?? '',
+            packSize: existingProduct.packSize ?? null,
+            packUnit: existingProduct.packUnit ?? '',
+            packPurchaseCost: existingProduct.packPurchaseCost ?? null,
+            packQuantity: existingProduct.packQuantity ?? null,
             // Product capabilities — backward compat: existing products default to purchasable + POS-enabled
             purchasable: existingProduct.purchasable ?? true,
             availableForPOS: existingProduct.availableForPOS ?? true,
@@ -111,6 +115,10 @@ export function useInventoryForm(
                 ? [{ supplierId: supplierIdFromQuery, locationId: 'loc-default', cost: 0, stock: 0, supplierSku: '', reorderLevel: undefined, notes: '' }]
                 : [],
             unit: 'pcs',
+            packSize: null,
+            packUnit: '',
+            packPurchaseCost: null,
+            packQuantity: null,
             quantity: 0,
             minimumStock: 5,
             purchaseRate: 0,

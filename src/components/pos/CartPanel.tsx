@@ -11,7 +11,7 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import {
   ShoppingCart, User, Trash2, Minus, Plus, Banknote, QrCode,
-  CreditCard, SplitSquareHorizontal, BookOpen,
+  CreditCard, SplitSquareHorizontal, BookOpen, Package,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CustomerPicker } from '@/components/pos/CustomerPicker';
@@ -19,6 +19,7 @@ import { VariantPicker } from '@/components/pos/VariantPicker';
 import { PaymentMethod, CartItem, Product } from '@/types';
 import { BankSelector } from '@/components/pos/BankSelector';
 import { Haptics } from '@/services/haptics';
+import { isDecimalUnit, getUnitStep, getQuickQuantityPresets, roundQuantity, formatQuantity } from '@/utils/unitUtils';
 
 interface VariantDraft {
   productId: string;
@@ -446,6 +447,9 @@ const CartItemRow = React.memo(({
 }: CartItemRowProps) => {
   const lineKey = `${item.productId}::${item.variantName ?? ''}`;
   const [draftQty, setDraftQty] = React.useState<string>(String(item.quantity));
+  const isDecimal = isDecimalUnit(item.unit);
+  const step = getUnitStep(item.unit);
+  const presets = React.useMemo(() => getQuickQuantityPresets(item.unit), [item.unit]);
 
   // Sync draft whenever upstream item.quantity changes (e.g. via +/- buttons or external updates)
   React.useEffect(() => {
@@ -453,8 +457,8 @@ const CartItemRow = React.memo(({
   }, [item.quantity]);
 
   const commitValue = () => {
-    const parsed = parseInt(draftQty, 10);
-    if (isNaN(parsed) || parsed < 1) {
+    const parsed = isDecimal ? parseFloat(draftQty) : parseInt(draftQty, 10);
+    if (isNaN(parsed) || parsed <= 0) {
       // Revert back to previous valid quantity if blank or zero
       setDraftQty(String(item.quantity));
     } else {
@@ -471,25 +475,34 @@ const CartItemRow = React.memo(({
       setDraftQty('');
       return;
     }
-    const num = parseInt(val, 10);
+    const num = isDecimal ? parseFloat(val) : parseInt(val, 10);
     if (!isNaN(num)) {
       setDraftQty(val);
-      if (num >= 1) {
+      if (num > 0) {
         onSetQuantity(lineKey, num);
       }
     }
   };
 
   return (
-    <div className="flex flex-col gap-2 p-3 bg-card rounded-xl border shadow-xs hover:border-primary/30 transition-all">
+    <div className="flex flex-col gap-2 p-3 bg-card rounded-2xl border border-border/70 shadow-xs hover:border-primary/30 transition-all">
+      {/* Top Row: Title, Variant, Pack Badge, Trash */}
       <div className="flex justify-between items-start gap-2">
-        <div className="min-w-0 flex-1">
+        <div className="min-w-0 flex-1 space-y-1">
           <span className="font-semibold text-sm line-clamp-2 leading-snug">{item.productName}</span>
-          {item.variantName && (
-            <span className="mt-1 inline-flex rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
-              {item.variantName}
-            </span>
-          )}
+          <div className="flex flex-wrap items-center gap-1.5">
+            {item.variantName && (
+              <span className="inline-flex rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">
+                {item.variantName}
+              </span>
+            )}
+            {item.packSize && Number(item.packSize) > 0 && (
+              <span className="inline-flex items-center gap-1 rounded-md bg-muted/60 text-muted-foreground px-1.5 py-0.5 text-[10px] font-medium border border-border/40">
+                <Package className="h-3 w-3 text-primary/70" />
+                {item.packSize} {item.unit || 'pcs'}/{item.packUnit || 'pk'}
+              </span>
+            )}
+          </div>
         </div>
         <button
           onClick={() => {
@@ -502,52 +515,98 @@ const CartItemRow = React.memo(({
           <Trash2 className="h-4 w-4" />
         </button>
       </div>
+
+      {/* Middle Row: Rate & Stepper */}
       <div className="flex justify-between items-center pt-0.5">
-        <span className="text-xs text-muted-foreground font-medium">{format(item.sellingRate)} each</span>
+        <div className="flex flex-col">
+          <span className="text-xs text-muted-foreground font-medium">
+            {format(item.sellingRate)} <span className="text-[10px] text-muted-foreground/80">/ {item.unit || 'pcs'}</span>
+          </span>
+        </div>
+
         <div className="flex items-center gap-1.5">
           <button
             type="button"
             className="h-8.5 w-8.5 rounded-xl border border-border/80 bg-muted/40 flex items-center justify-center hover:bg-destructive/10 text-destructive active:scale-90 transition-all"
             onClick={() => {
               Haptics.light();
-              if (item.quantity === 1) onRemove(lineKey);
-              else onUpdateQuantity(lineKey, -1);
+              if (item.quantity <= step) {
+                onRemove(lineKey);
+              } else {
+                onUpdateQuantity(lineKey, -step);
+              }
             }}
             aria-label="Decrease quantity"
           >
             <Minus className="h-3.5 w-3.5" />
           </button>
-          <Input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            className="h-8.5 w-12 text-center text-sm p-0 font-bold bg-background rounded-xl"
-            value={draftQty}
-            onFocus={e => e.target.select()}
-            onChange={handleChange}
-            onBlur={commitValue}
-            onKeyDown={e => {
-              if (e.key === 'Enter') {
-                e.currentTarget.blur();
-              }
-            }}
-            aria-label="Item quantity"
-          />
+
+          <div className="relative flex items-center">
+            <Input
+              type="text"
+              inputMode={isDecimal ? "decimal" : "numeric"}
+              pattern={isDecimal ? undefined : "[0-9]*"}
+              className="h-8.5 w-14 text-center text-sm p-0 font-bold bg-background rounded-xl"
+              value={draftQty}
+              onFocus={e => e.target.select()}
+              onChange={handleChange}
+              onBlur={commitValue}
+              onKeyDown={e => {
+                if (e.key === 'Enter') {
+                  e.currentTarget.blur();
+                }
+              }}
+              aria-label="Item quantity"
+            />
+          </div>
+
           <button
             type="button"
             className="h-8.5 w-8.5 rounded-xl border border-border/80 bg-muted/40 flex items-center justify-center hover:bg-green-500/10 text-green-600 active:scale-90 transition-all"
             onClick={() => {
               Haptics.light();
-              onUpdateQuantity(lineKey, 1);
+              onUpdateQuantity(lineKey, step);
             }}
             aria-label="Increase quantity"
           >
             <Plus className="h-3.5 w-3.5" />
           </button>
+
           <span className="font-bold text-sm ml-1 w-20 text-right tabular-nums text-foreground">
             {format(item.subtotal)}
           </span>
         </div>
+      </div>
+
+      {/* Quick Quantity Preset Chips (Mobile-friendly rapid tapping) */}
+      <div className="flex items-center gap-1 pt-1 overflow-x-auto no-scrollbar">
+        <span className="text-[10px] text-muted-foreground/70 mr-0.5 shrink-0">Qty:</span>
+        {presets.map(p => {
+          const isActive = Math.abs(item.quantity - p) < 0.0001;
+          const isOverMax = p > item.maxQuantity;
+          return (
+            <button
+              key={p}
+              type="button"
+              disabled={isOverMax}
+              onClick={() => {
+                Haptics.light();
+                onSetQuantity(lineKey, p);
+                setDraftQty(String(p));
+              }}
+              className={cn(
+                'text-[10px] px-2 py-0.5 rounded-lg border font-medium transition-all shrink-0',
+                isActive
+                  ? 'bg-primary text-primary-foreground border-primary font-bold shadow-xs'
+                  : isOverMax
+                    ? 'bg-muted/20 text-muted-foreground/40 border-transparent cursor-not-allowed'
+                    : 'bg-muted/40 hover:bg-muted text-foreground border-border/60 active:scale-95'
+              )}
+            >
+              {p} {item.unit || 'pcs'}
+            </button>
+          );
+        })}
       </div>
     </div>
   );

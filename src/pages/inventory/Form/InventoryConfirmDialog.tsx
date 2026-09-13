@@ -139,6 +139,12 @@ export const InventoryConfirmDialog = React.memo(({
           <Section icon={Tag} title="Pricing">
             <Row label="Selling Price" value={`Rs. ${(values.sellingRate ?? 0).toFixed(2)}`} />
             <Row label="Purchase Cost" value={`Rs. ${effectivePurchaseRate.toFixed(2)}`} />
+            {values.packSize && values.packPurchaseCost && (
+              <Row
+                label="Bulk Pack Info"
+                value={`1 ${values.packUnit || 'pack'} (${values.packSize} ${values.unit || 'pcs'}) @ Rs. ${Number(values.packPurchaseCost).toFixed(2)}`}
+              />
+            )}
             <Row
               label="Profit / unit"
               value={`Rs. ${profitPerUnit.toFixed(2)} (${margin}%)`}

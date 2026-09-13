@@ -179,8 +179,8 @@ export function SaleBillPrint({
                     <td className="text-left py-0.5 pr-1 wrap-break-word align-top">
                       {item.productName}
                     </td>
-                    <td className="text-center w-6 align-top py-0.5">
-                      {item.quantity}
+                    <td className="text-center min-w-8 align-top py-0.5 whitespace-nowrap">
+                      {item.quantity}{item.unit ? ` ${item.unit}` : ''}
                     </td>
                     <td className="text-right w-12 align-top py-0.5">
                       {item.sellingRate.toFixed(2)}

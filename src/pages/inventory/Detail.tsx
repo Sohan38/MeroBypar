@@ -365,6 +365,16 @@ export default function InventoryDetail() {
             <span>Stock Value (cost): <span className="font-medium text-foreground">{format(stockValue)}</span></span>
             <span>Stock Value (retail): <span className="font-medium text-foreground">{format(retailValue)}</span></span>
           </div>
+          {product.packSize && product.packPurchaseCost && (
+            <div className="mt-3 p-2.5 rounded-lg bg-primary/5 border border-primary/15 flex items-center justify-between text-xs">
+              <span className="text-muted-foreground">
+                Bulk Pack: <strong className="text-foreground">{product.packSize} {product.unit}</strong> / {product.packUnit || 'pack'}
+              </span>
+              <span className="font-semibold text-primary">
+                {format(product.packPurchaseCost)} / {product.packUnit || 'pack'}
+              </span>
+            </div>
+          )}
         </CardContent>
       </Card>
 

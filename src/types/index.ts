@@ -17,7 +17,7 @@ export interface Location extends StorageRecord {
   notes?: string;
 }
 
-export type ProductUnit = 'pcs' | 'packet' | 'box' | 'bottle' | 'kg' | 'gram' | 'litre' | 'ml' | 'plate' | 'cup' | 'glass' | 'meter' | 'roll' | 'dozen' | 'custom';
+export type ProductUnit = 'pcs' | 'packet' | 'box' | 'bottle' | 'kg' | 'gram' | 'litre' | 'ml' | 'plate' | 'cup' | 'glass' | 'meter' | 'inch' | 'feet' | 'yard' | 'roll' | 'dozen' | 'pair' | 'set' | 'bundle' | 'bag' | 'can' | 'jar' | 'tube' | 'sheet' | 'custom';
 
 export interface Product extends StorageRecord {
   barcode: string;
@@ -27,6 +27,11 @@ export interface Product extends StorageRecord {
   supplierId: string;
   supplierIds?: string[]; // multiple suppliers support
   unit: ProductUnit;
+  // Pack pricing — auto-calculates purchase cost per base unit
+  packSize?: number | null;           // e.g. 30 (pieces per pack)
+  packUnit?: string | null;           // e.g. "pack", "carton", "box"
+  packPurchaseCost?: number | null;   // e.g. 500 (total cost of one pack)
+  packQuantity?: number | null;       // e.g. 1 (number of packs in stock at entry)
   quantity: number;
   minimumStock: number;
   purchaseRate: number;
@@ -358,6 +363,7 @@ export interface SaleItem {
   productId: string;
   productName: string;
   quantity: number;
+  unit?: string;
   sellingRate: number;
   subtotal: number;
   /** Optional variant selected at the POS (for example, Red or XL). */
@@ -558,6 +564,9 @@ export interface CartItem {
   productId: string;
   productName: string;
   quantity: number;
+  unit?: string;
+  packSize?: number | null;
+  packUnit?: string | null;
   sellingRate: number;
   maxQuantity: number;
   subtotal: number;

@@ -5,6 +5,7 @@ import { Input } from '@/components/ui/input';
 import type { CartItem, Product } from '@/types';
 import { rankSearch } from '@/utils/search/rank';
 import { normalize } from '@/utils/search/normalize';
+import { isDecimalUnit, getUnitStep, roundQuantity } from '@/utils/unitUtils';
 
 interface VariantPickerProps {
     product: Product;
@@ -138,6 +139,8 @@ function VariantRow({
     onSetQuantity,
 }: VariantRowProps) {
     const [draftQty, setDraftQty] = useState<string>(String(quantity));
+    const isDecimal = isDecimalUnit(unit);
+    const step = getUnitStep(unit);
 
     // Sync draft with external quantity change
     useMemo(() => {
@@ -145,7 +148,7 @@ function VariantRow({
     }, [quantity]);
 
     const commitValue = () => {
-        const parsed = parseInt(draftQty, 10);
+        const parsed = isDecimal ? parseFloat(draftQty) : parseInt(draftQty, 10);
         if (isNaN(parsed) || parsed < 0) {
             setDraftQty(String(quantity));
         } else {
@@ -161,7 +164,7 @@ function VariantRow({
             setDraftQty('');
             return;
         }
-        const num = parseInt(val, 10);
+        const num = isDecimal ? parseFloat(val) : parseInt(val, 10);
         if (!isNaN(num)) {
             setDraftQty(val);
             if (num >= 0) {
@@ -188,15 +191,15 @@ function VariantRow({
                     size="icon"
                     className="h-8 w-8 rounded-lg"
                     disabled={quantity === 0}
-                    onClick={() => onSetQuantity(variant.name, quantity - 1)}
+                    onClick={() => onSetQuantity(variant.name, roundQuantity(Math.max(0, quantity - step), unit))}
                     aria-label={`Decrease ${variant.name} quantity`}
                 >
                     <Minus className="h-3 w-3" />
                 </Button>
                 <Input
                     type="text"
-                    inputMode="numeric"
-                    pattern="[0-9]*"
+                    inputMode={isDecimal ? "decimal" : "numeric"}
+                    pattern={isDecimal ? undefined : "[0-9]*"}
                     value={draftQty}
                     disabled={isOutOfStock}
                     onFocus={e => e.target.select()}
@@ -216,7 +219,7 @@ function VariantRow({
                     size="icon"
                     className="h-8 w-8 rounded-lg"
                     disabled={isOutOfStock || quantity >= variant.quantity || atProductLimit}
-                    onClick={() => onSetQuantity(variant.name, quantity + 1)}
+                    onClick={() => onSetQuantity(variant.name, roundQuantity(Math.min(variant.quantity, quantity + step), unit))}
                     aria-label={`Increase ${variant.name} quantity`}
                 >
                     <Plus className="h-3 w-3" />

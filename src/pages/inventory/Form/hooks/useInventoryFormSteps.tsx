@@ -185,7 +185,7 @@ export function useInventoryFormSteps(
                     />
                 </>
             ),
-            fields: ['purchaseRate', 'sellingRate', 'quantity', 'minimumStock'],
+            fields: ['purchaseRate', 'sellingRate', 'packSize', 'packUnit', 'packPurchaseCost', 'quantity', 'minimumStock'],
         });
 
         result.push({

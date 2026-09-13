@@ -24,6 +24,7 @@ import { InventoryLedgerService } from '@/services/inventoryLedgerService';
 import { useStorageProvider } from '@/storage/StorageContext';
 import { FinancialPostingService } from '@/services/financialPostingService';
 import { Haptics } from '@/services/haptics';
+import { roundQuantity, formatQuantity, isDecimalUnit, getUnitStep } from '@/utils/unitUtils';
 
 interface VariantDraft {
   productId: string;
@@ -257,23 +258,29 @@ export default function SalesPos() {
       const existing = cur.find(i => cartLineKey(i) === cartLineKey({ productId: product.id }));
       if (existing) {
         if (existing.quantity >= sellableQuantity) {
-          toast.error(`Only ${sellableQuantity} ${product.unit} in stock`);
+          toast.error(`Only ${formatQuantity(sellableQuantity, product.unit)} in stock`);
           return cur;
         }
+        const delta = 1;
+        const newQty = roundQuantity(Math.min(sellableQuantity, existing.quantity + delta), product.unit);
         return cur.map(i =>
           i.productId === product.id
-            ? { ...i, quantity: i.quantity + 1, subtotal: (i.quantity + 1) * i.sellingRate }
+            ? { ...i, quantity: newQty, subtotal: Math.round(newQty * i.sellingRate * 100) / 100 }
             : i
         );
       }
 
+      const initialQty = roundQuantity(Math.min(1, sellableQuantity), product.unit);
       return [...cur, {
         productId: product.id,
         productName: product.name,
-        quantity: 1,
+        quantity: initialQty,
+        unit: product.unit,
+        packSize: product.packSize,
+        packUnit: product.packUnit,
         sellingRate: product.sellingRate,
         maxQuantity: sellableQuantity,
-        subtotal: product.sellingRate,
+        subtotal: Math.round(initialQty * product.sellingRate * 100) / 100,
       }];
     });
 
@@ -296,7 +303,7 @@ export default function SalesPos() {
       .filter(item => item.productId === product.id && item.variantName !== name)
       .reduce((sum, item) => sum + item.quantity, 0);
     const maxAllowed = Math.max(0, Math.min(variant.quantity, sellableQuantity - otherSelected));
-    const quantity = Math.max(0, Math.min(maxAllowed, Math.floor(Number.isFinite(requestedQuantity) ? requestedQuantity : 0)));
+    const quantity = Math.max(0, Math.min(maxAllowed, roundQuantity(Number.isFinite(requestedQuantity) ? requestedQuantity : 0, product.unit)));
     const withoutVariant = cart.filter(item => cartLineKey(item) !== cartLineKey({ productId: product.id, variantName: name }));
 
     if (quantity === 0) {
@@ -309,9 +316,12 @@ export default function SalesPos() {
       productName: product.name,
       variantName: name,
       quantity,
+      unit: product.unit,
+      packSize: product.packSize,
+      packUnit: product.packUnit,
       sellingRate: product.sellingRate,
       maxQuantity: maxAllowed,
-      subtotal: quantity * product.sellingRate,
+      subtotal: Math.round(quantity * product.sellingRate * 100) / 100,
     };
 
     setCart(prev => {
@@ -336,22 +346,34 @@ export default function SalesPos() {
   const updateCartQuantity = (lineKey: string, delta: number) => {
     setCart(cur => cur.map(item => {
       if (cartLineKey(item) !== lineKey) return item;
-      const newQ = item.quantity + delta;
+      const newQ = roundQuantity(item.quantity + delta, item.unit);
       if (newQ <= 0) return item;
-      if (newQ > item.maxQuantity) { toast.error(`Only ${item.maxQuantity} in stock`); return item; }
-      return { ...item, quantity: newQ, subtotal: newQ * item.sellingRate };
+      if (newQ > item.maxQuantity) {
+        toast.error(`Only ${formatQuantity(item.maxQuantity, item.unit)} in stock`);
+        return item;
+      }
+      return { ...item, quantity: newQ, subtotal: Math.round(newQ * item.sellingRate * 100) / 100 };
     }));
   };
 
   const setCartQuantity = (lineKey: string, qty: number) => {
-    if (isNaN(qty) || qty < 1) return;
+    if (isNaN(qty) || qty <= 0) return;
     setCart(cur => cur.map(item => {
       if (cartLineKey(item) !== lineKey) return item;
-      if (qty > item.maxQuantity) {
-        toast.error(`Only ${item.maxQuantity} in stock`);
-        return { ...item, quantity: item.maxQuantity, subtotal: item.maxQuantity * item.sellingRate };
+      const cleanQty = roundQuantity(qty, item.unit);
+      if (cleanQty > item.maxQuantity) {
+        toast.error(`Only ${formatQuantity(item.maxQuantity, item.unit)} in stock`);
+        return {
+          ...item,
+          quantity: item.maxQuantity,
+          subtotal: Math.round(item.maxQuantity * item.sellingRate * 100) / 100,
+        };
       }
-      return { ...item, quantity: qty, subtotal: qty * item.sellingRate };
+      return {
+        ...item,
+        quantity: cleanQty,
+        subtotal: Math.round(cleanQty * item.sellingRate * 100) / 100,
+      };
     }));
   };
 
@@ -492,6 +514,7 @@ export default function SalesPos() {
             productName: item.productName,
             variantName: item.variantName,
             quantity: item.quantity,
+            unit: item.unit,
             sellingRate: item.sellingRate,
             subtotal: item.subtotal,
           };
@@ -502,7 +525,7 @@ export default function SalesPos() {
         const nextQueue: BatchCostAllocation[] = [];
 
         for (const allocation of productQueue) {
-          if (remaining <= 0) {
+          if (remaining <= 0.0001) {
             nextQueue.push(allocation);
             continue;
           }
@@ -513,17 +536,17 @@ export default function SalesPos() {
             quantity: take,
             purchaseRate: allocation.purchaseRate,
           });
-          remaining -= take;
+          remaining = Math.round((remaining - take) * 1000) / 1000;
 
-          if (allocation.quantity - take > 0) {
+          if (allocation.quantity - take > 0.0001) {
             nextQueue.push({
               ...allocation,
-              quantity: allocation.quantity - take,
+              quantity: Math.round((allocation.quantity - take) * 1000) / 1000,
             });
           }
         }
 
-        if (remaining > 0) {
+        if (remaining > 0.0001) {
           throw new Error(`Unable to allocate batch cost for ${item.productName}`);
         }
 
@@ -534,6 +557,7 @@ export default function SalesPos() {
           productName: item.productName,
           variantName: item.variantName,
           quantity: item.quantity,
+          unit: item.unit,
           sellingRate: item.sellingRate,
           subtotal: item.subtotal,
           costAllocations: itemAllocations,

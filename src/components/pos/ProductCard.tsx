@@ -2,6 +2,7 @@ import { memo } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
 import { Haptics } from '@/services/haptics';
+import { formatQuantity } from '@/utils/unitUtils';
 
 interface Props {
     product: any;
@@ -51,11 +52,12 @@ export const ProductCard = memo(function ProductCard({
                             "inline-block w-1.5 h-1.5 rounded-full",
                             isLowStock ? "bg-amber-500" : "bg-emerald-500"
                         )} />
-                        <span>{product.quantity} {product.unit || 'pcs'}</span>
+                        <span>{formatQuantity(product.quantity, product.unit || 'pcs')}</span>
                     </div>
 
                     <div className="text-primary font-bold text-xs sm:text-sm tabular-nums tracking-tight">
                         {format(product.sellingRate)}
+                        <span className="text-[10px] font-normal text-muted-foreground ml-0.5">/{product.unit || 'pcs'}</span>
                     </div>
                 </div>
             </CardContent>
