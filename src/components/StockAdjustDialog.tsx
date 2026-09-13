@@ -15,7 +15,9 @@ import { createPurchaseForStockIncrease } from '@/services/purchaseHelpers';
 import { rankSearch } from '@/utils/search/rank';
 import { cn } from '@/lib/utils';
 import { getLocationStockForProduct, getProductLocationStockSummary } from '@/lib/locationStock';
-import { Users, X } from 'lucide-react';
+import { Users, X, Boxes } from 'lucide-react';
+import { Badge } from '@/components/ui/badge';
+import { getSafePackSize, safeQty } from '@/utils/unitUtils';
 
 interface StockAdjustDialogProps {
   product: Product | null;
@@ -34,6 +36,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
   const [mode, setMode] = useState<'add' | 'remove' | 'set'>('add');
   const [amount, setAmount] = useState('');
   const [reason, setReason] = useState('');
+  const [adjustUnitMode, setAdjustUnitMode] = useState<'pack' | 'base'>('pack');
 
   const [selectedBatchId, setSelectedBatchId] = useState('');
   const [selectedVariantName, setSelectedVariantName] = useState('');
@@ -42,6 +45,12 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
   const [filterQuery, setFilterQuery] = useState('');
 
   const amountInputRef = useRef<HTMLInputElement>(null);
+
+  const hasPack = Boolean(product?.packSize && product.packSize > 0);
+  const packSize = getSafePackSize(product?.packSize);
+  const packUnit = product?.packUnit || 'pack';
+  const baseUnit = product?.unit || 'pcs';
+  const isPackMode = hasPack && adjustUnitMode === 'pack';
 
   // Memoize batches to prevent recalculation on every keystroke
   const productBatches = useMemo(() => {
@@ -88,6 +97,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
     setAmount('');
     setReason('');
     setMode('add');
+    setAdjustUnitMode(product.packSize && product.packSize > 0 ? 'pack' : 'base');
 
     // Delay focus slightly to ensure modal animation has started
     const timer = setTimeout(() => amountInputRef.current?.focus(), 50);
@@ -116,7 +126,8 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
   };
 
   const currentQty = getSelectedCurrentQty();
-  const numericAmount = Number(amount) || 0;
+  const rawInputNumber = Number(amount) || 0;
+  const numericAmount = isPackMode ? safeQty(rawInputNumber * packSize) : rawInputNumber;
 
   const computeNew = (): number => {
     if (mode === 'add') return currentQty + numericAmount;
@@ -159,7 +170,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
       return;
     }
 
-    const finalReason = reason || `Manual ${mode === 'add' ? 'increase' : mode === 'remove' ? 'decrease' : 'set'}`;
+    const finalReason = reason || `Manual ${mode === 'add' ? 'increase' : mode === 'remove' ? 'decrease' : 'set'}${isPackMode ? ` (${rawInputNumber} ${packUnit}s)` : ''}`;
 
     // ──────────────────────────────────────────────────────────────────────
     // IMPORTANT: When diff > 0 we create a purchase via createPurchaseForStockIncrease.
@@ -374,10 +385,16 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
           </DialogHeader>
 
           <div className="space-y-4 min-w-0 w-full">
-            <div className="bg-muted/50 rounded-lg p-3">
+            <div className="bg-muted/50 rounded-xl p-3 border">
               <div className="font-semibold truncate">{product.name}</div>
-              <div className="text-sm text-muted-foreground mt-0.5">
-                Current Total: <span className="font-bold text-foreground">{product.quantity}</span> {product.unit}
+              <div className="text-sm text-muted-foreground mt-0.5 flex items-center gap-1.5 flex-wrap">
+                <span>Current Total: <span className="font-bold text-foreground tabular-nums">{product.quantity}</span> {product.unit}</span>
+                {hasPack && (
+                  <span className="text-xs text-muted-foreground font-normal">
+                    ({Math.floor(product.quantity / packSize)} {packUnit}{Math.floor(product.quantity / packSize) === 1 ? '' : 's'}
+                    {product.quantity % packSize > 0 ? ` + ${product.quantity % packSize} ${baseUnit}` : ''})
+                  </span>
+                )}
               </div>
             </div>
 
@@ -533,17 +550,71 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
                 <span>Please select a supplier from the list above first to view and adjust their specific stock level.</span>
               </div>
             ) : (
-              <div className="bg-primary/5 rounded-lg p-3 border border-primary/10">
-                <div className="text-xs text-muted-foreground">Adjusting Current Stock:</div>
-                <div className="text-lg font-bold text-primary">
-                  {currentQty} <span className="text-sm font-normal text-muted-foreground">{product.unit}</span>
+              <div className="bg-primary/5 rounded-xl p-3 border border-primary/15 flex items-center justify-between gap-2">
+                <div>
+                  <div className="text-xs text-muted-foreground">Adjusting Current Stock:</div>
+                  <div className="text-lg font-bold text-primary tabular-nums">
+                    {currentQty} <span className="text-sm font-normal text-muted-foreground">{product.unit}</span>
+                  </div>
                 </div>
+                {hasPack && (
+                  <div className="text-right">
+                    <Badge variant="outline" className="text-[10px] font-semibold bg-background border-primary/30 text-primary">
+                      {Math.floor(currentQty / packSize)} {packUnit}{Math.floor(currentQty / packSize) === 1 ? '' : 's'}
+                      {currentQty % packSize > 0 ? ` + ${currentQty % packSize} ${product.unit}` : ''}
+                    </Badge>
+                  </div>
+                )}
               </div>
             )}
 
             {/* Adjustment inputs (disabled/hidden if supplier not selected for multi-supplier) */}
             {(!isMultiSupplier || selectedSupplierId) && (
               <>
+                {/* Pack Mode Header / Segmented Switcher */}
+                {hasPack && (
+                  <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-muted/40 border text-xs">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <Boxes className="h-3.5 w-3.5 text-primary shrink-0" />
+                      <span className="font-semibold text-foreground truncate">
+                        1 {packUnit} = {packSize} {product.unit}
+                      </span>
+                    </div>
+                    <div className="flex items-center gap-1 bg-background p-0.5 rounded-lg border shrink-0">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdjustUnitMode('pack');
+                          setAmount('');
+                        }}
+                        className={cn(
+                          "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all",
+                          adjustUnitMode === 'pack'
+                            ? "bg-primary text-primary-foreground shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        By {packUnit}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdjustUnitMode('base');
+                          setAmount('');
+                        }}
+                        className={cn(
+                          "px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all",
+                          adjustUnitMode === 'base'
+                            ? "bg-primary text-primary-foreground shadow-xs"
+                            : "text-muted-foreground hover:text-foreground"
+                        )}
+                      >
+                        By {product.unit}
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 {/* Mode selector */}
                 <div className="grid grid-cols-3 gap-2">
                   <Button
@@ -551,7 +622,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
                     size="sm"
                     variant={mode === 'add' ? 'default' : 'outline'}
                     onClick={() => setMode('add')}
-                    className="gap-1"
+                    className="gap-1 rounded-xl"
                   >
                     <Plus className="h-3 w-3" /> Add
                   </Button>
@@ -560,7 +631,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
                     size="sm"
                     variant={mode === 'remove' ? 'destructive' : 'outline'}
                     onClick={() => setMode('remove')}
-                    className="gap-1"
+                    className="gap-1 rounded-xl"
                   >
                     <Minus className="h-3 w-3" /> Remove
                   </Button>
@@ -569,25 +640,38 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
                     size="sm"
                     variant={mode === 'set' ? 'secondary' : 'outline'}
                     onClick={() => setMode('set')}
+                    className="rounded-xl"
                   >
                     Set To
                   </Button>
                 </div>
 
                 <div className="space-y-2">
-                  <Label>
-                    {mode === 'add' ? 'Add Quantity' : mode === 'remove' ? 'Remove Quantity' : 'Set New Quantity'}
+                  <Label className="flex items-center justify-between">
+                    <span>
+                      {mode === 'add'
+                        ? `Add ${isPackMode ? `${packUnit}s` : 'Quantity'}`
+                        : mode === 'remove'
+                          ? `Remove ${isPackMode ? `${packUnit}s` : 'Quantity'}`
+                          : `Set New ${isPackMode ? `${packUnit}s` : 'Quantity'}`}
+                    </span>
+                    {isPackMode && rawInputNumber > 0 && (
+                      <span className="text-xs text-muted-foreground font-normal tabular-nums">
+                        = {numericAmount} {product.unit}
+                      </span>
+                    )}
                   </Label>
                   <div className="flex gap-2">
                     <Input
                       ref={amountInputRef}
                       type="number"
                       min="0"
-                      placeholder="Enter amount"
+                      step={isPackMode ? "any" : "1"}
+                      placeholder={`Enter ${isPackMode ? `${packUnit}s` : 'amount'}`}
                       value={amount}
                       onChange={e => setAmount(e.target.value)}
                       onWheel={(e) => e.currentTarget.blur()} // Prevent scroll-wheel from changing numbers
-                      className="h-12 text-lg font-bold flex-1"
+                      className="h-12 text-lg font-bold flex-1 rounded-xl"
                       data-testid="input-stock-amount"
                     />
                     <div className="flex gap-1">
@@ -597,7 +681,7 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
                           type="button"
                           size="sm"
                           variant="outline"
-                          className="h-12 px-3 text-xs"
+                          className="h-12 px-2.5 text-xs font-semibold rounded-xl"
                           onClick={() => handleQuickAmount(val)}
                         >
                           {mode === 'remove' ? `-${val}` : `+${val}`}
@@ -609,14 +693,22 @@ export function StockAdjustDialog({ product, open, onClose, onAdjust }: StockAdj
 
                 {/* Preview */}
                 {amount && (
-                  <div className={`flex justify-between items-center rounded-lg p-3 text-sm font-medium
+                  <div className={`flex justify-between items-center rounded-xl p-3 text-sm font-medium
                     ${diff > 0 ? 'bg-green-500/10 text-green-700 dark:text-green-400' :
                       diff < 0 ? 'bg-destructive/10 text-destructive' :
                         'bg-muted text-muted-foreground'}`}>
                     <span>New stock</span>
-                    <span className="font-bold text-base">
-                      {diff > 0 ? '+' : ''}{diff !== 0 ? diff : ''} → {newQty} {product.unit}
-                    </span>
+                    <div className="text-right">
+                      <span className="font-bold text-base block tabular-nums">
+                        {diff > 0 ? '+' : ''}{diff !== 0 ? diff : ''} → {newQty} {product.unit}
+                      </span>
+                      {hasPack && (
+                        <span className="text-[11px] text-muted-foreground block tabular-nums">
+                          = {Math.floor(newQty / packSize)} {packUnit}{Math.floor(newQty / packSize) === 1 ? '' : 's'}
+                          {newQty % packSize > 0 ? ` + ${newQty % packSize} ${product.unit}` : ''}
+                        </span>
+                      )}
+                    </div>
                   </div>
                 )}
               </>

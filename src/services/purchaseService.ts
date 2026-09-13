@@ -38,6 +38,10 @@ function normalizeItem(item: PurchaseItem): PurchaseItem {
         quantity,
         purchaseRate,
         subtotal: quantity * purchaseRate,
+        packQuantity: item.packQuantity != null ? Number(item.packQuantity) : null,
+        packCost: item.packCost != null ? Number(item.packCost) : null,
+        packUnit: item.packUnit ?? null,
+        packSize: item.packSize != null ? Number(item.packSize) : null,
     };
 }
 
@@ -151,6 +155,11 @@ function revertPurchase(
                 throw new Error(`Cannot reverse ${purchase.invoiceNumber || 'this purchase'}: supplier stock for ${product.name} is lower than the received quantity.`);
             }
             supplierRecord.stock -= item.quantity;
+            supplierRecord.baseQuantity = Math.max(0, (supplierRecord.baseQuantity ?? (supplierRecord.stock + item.quantity)) - item.quantity);
+            supplierRecord.totalPurchaseCost = Math.max(0, (supplierRecord.totalPurchaseCost ?? 0) - item.subtotal);
+            if (product.packSize && product.packSize > 0) {
+                supplierRecord.packQuantity = Math.round((supplierRecord.stock / product.packSize) * 1000) / 1000;
+            }
         }
         product.supplierIds = supplierState.supplierIds;
         product.supplierId = supplierState.supplierIds[0] ?? '';
@@ -204,6 +213,15 @@ function applyPurchase(
         supplierRecord.stock += item.quantity;
         supplierRecord.cost = item.purchaseRate;
         supplierRecord.lastPurchaseDate = purchase.date;
+        supplierRecord.baseQuantity = (supplierRecord.baseQuantity ?? (supplierRecord.stock - item.quantity)) + item.quantity;
+        supplierRecord.totalPurchaseCost = (supplierRecord.totalPurchaseCost ?? 0) + item.subtotal;
+        if (product.packSize && product.packSize > 0) {
+            supplierRecord.appliedPackSize = product.packSize;
+            supplierRecord.packQuantity = Math.round((supplierRecord.stock / product.packSize) * 1000) / 1000;
+            if (item.packCost != null && item.packCost > 0) {
+                supplierRecord.packCost = item.packCost;
+            }
+        }
 
         product.supplierIds = supplierState.supplierIds;
         product.supplierId = supplierState.supplierIds[0] ?? '';

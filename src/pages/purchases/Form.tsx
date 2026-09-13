@@ -20,6 +20,7 @@ import {
   AlertCircle,
   Truck,
   X,
+  Boxes,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PurchaseItem, PurchasePaymentStatus, PurchaseStatus } from '@/types';
@@ -29,12 +30,15 @@ import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
 import { SupplierFormDialog } from '@/components/SupplierFormDialog';
 import { generateBatchNumber, generateSupplierInvoiceNumber } from '@/utils/numbering';
 import { isProductPurchasable } from '@/lib/productCapabilities';
+import { cn } from '@/lib/utils';
+import { safeCurrency, safeQty, computePerUnitCost, getSafePackSize } from '@/utils/unitUtils';
 
 type DraftItem = PurchaseItem & {
   initialPurchaseRate?: number | null;
   expiryMode?: 'months' | 'manual';
   manufacturingDate?: string | null;
   expiryDate?: string | null;
+  entryMode?: 'pack' | 'base';
 };
 
 const today = () => new Date().toLocaleDateString('en-CA');
@@ -70,7 +74,11 @@ export default function PurchaseForm() {
   const [paymentStatus, setPaymentStatus] = useState<PurchasePaymentStatus>(existing?.paymentStatus ?? 'unpaid');
   const [paidAmount, setPaidAmount] = useState(String(existing?.paidAmount ?? 0));
   const [notes, setNotes] = useState(existing?.notes ?? '');
-  const [items, setItems] = useState<DraftItem[]>(() => (existing?.items ?? []).map(item => ({ ...item, initialPurchaseRate: item.purchaseRate })));
+  const [items, setItems] = useState<DraftItem[]>(() => (existing?.items ?? []).map(item => ({
+    ...item,
+    initialPurchaseRate: item.purchaseRate,
+    entryMode: item.packQuantity && item.packQuantity > 0 ? 'pack' : 'base',
+  })));
   const [discount, setDiscount] = useState(String(existing?.discount ?? 0));
   const [tax, setTax] = useState(String(existing?.tax ?? 0));
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
@@ -166,6 +174,31 @@ export default function PurchaseForm() {
       ? supplierStockEntry.cost
       : (product.purchaseRate || 0);
 
+    const hasPack = Boolean(product.packSize && product.packSize > 0);
+    const safePackSize = getSafePackSize(product.packSize);
+    let initialPackCost: number | null = null;
+    let initialPackQty: number | null = null;
+    let initialQuantity = 1;
+    let effectiveRate = initialRate;
+
+    if (hasPack) {
+      initialPackCost = supplierStockEntry?.packCost && supplierStockEntry.packCost > 0
+        ? supplierStockEntry.packCost
+        : (product.packPurchaseCost && product.packPurchaseCost > 0
+            ? product.packPurchaseCost
+            : (initialRate > 0 ? safeCurrency(initialRate * safePackSize) : null));
+
+      if (initialPackCost && initialPackCost > 0 && initialRate <= 0) {
+        effectiveRate = computePerUnitCost(initialPackCost, safePackSize);
+      }
+      initialPackQty = 1;
+      initialQuantity = safeQty(1 * safePackSize);
+    }
+
+    const itemSubtotal = hasPack && initialPackCost && initialPackCost > 0
+      ? safeCurrency(initialPackCost * (initialPackQty || 1))
+      : safeCurrency(initialQuantity * effectiveRate);
+
     const defaultExpiryMonths = product.hasExpiry ? 12 : null;
     const defaultManufacturingDate = product.hasExpiry ? today() : null;
     const defaultExpiryDate = product.hasExpiry ? getComputedExpiryDate(defaultManufacturingDate, defaultExpiryMonths) : null;
@@ -175,10 +208,15 @@ export default function PurchaseForm() {
       {
         productId: product.id,
         productName: product.name,
-        quantity: 1,
-        purchaseRate: initialRate,
-        initialPurchaseRate: initialRate,
-        subtotal: initialRate,
+        quantity: initialQuantity,
+        purchaseRate: effectiveRate,
+        initialPurchaseRate: effectiveRate,
+        subtotal: itemSubtotal,
+        packQuantity: initialPackQty,
+        packCost: initialPackCost,
+        packUnit: product.packUnit || null,
+        packSize: product.packSize || null,
+        entryMode: hasPack ? 'pack' : 'base',
         batchNumber: product.hasExpiry || isBatchesEnabled ? generateBatchNumber([...existingBatches, ...prev.map(item => ({ batchNumber: item.batchNumber }))], { productName: product.name, supplierName: selectedSupplier?.name ?? '', date: purchaseDate }) : undefined,
         manufacturingDate: defaultManufacturingDate,
         expiryMonths: defaultExpiryMonths,
@@ -197,8 +235,36 @@ export default function PurchaseForm() {
     setItems(current => current.map((item, itemIndex) => {
       if (itemIndex !== index) return item;
       const next = { ...item, [field]: value } as DraftItem;
-      if (field === 'quantity' || field === 'purchaseRate') {
-        next.subtotal = Math.max(0, Number(next.quantity) || 0) * Math.max(0, Number(next.purchaseRate) || 0);
+      const safePackSize = getSafePackSize(next.packSize);
+
+      if (field === 'packQuantity') {
+        const packQty = Math.max(0, Number(value) || 0);
+        next.packQuantity = packQty;
+        next.quantity = safeQty(packQty * safePackSize);
+        const pCost = Number(next.packCost || 0);
+        next.subtotal = safeCurrency(packQty * pCost);
+      } else if (field === 'packCost') {
+        const pCost = Math.max(0, Number(value) || 0);
+        next.packCost = pCost;
+        next.purchaseRate = computePerUnitCost(pCost, safePackSize);
+        const pQty = Number(next.packQuantity ?? (next.quantity / safePackSize));
+        next.subtotal = safeCurrency(pQty * pCost);
+      } else if (field === 'quantity') {
+        const qty = Math.max(0, Number(value) || 0);
+        next.quantity = qty;
+        if (next.packSize && next.packSize > 0) {
+          next.packQuantity = safeQty(qty / safePackSize);
+        }
+        next.subtotal = safeCurrency(qty * Math.max(0, Number(next.purchaseRate) || 0));
+      } else if (field === 'purchaseRate') {
+        const rate = Math.max(0, Number(value) || 0);
+        next.purchaseRate = rate;
+        if (next.packSize && next.packSize > 0) {
+          next.packCost = safeCurrency(rate * safePackSize);
+        }
+        next.subtotal = safeCurrency(Math.max(0, Number(next.quantity) || 0) * rate);
+      } else if (field === 'entryMode') {
+        next.entryMode = value as 'pack' | 'base';
       }
 
       if (field === 'manufacturingDate' || field === 'expiryMonths' || field === 'expiryMode') {
@@ -502,13 +568,125 @@ export default function PurchaseForm() {
                             <Trash2 className="h-4 w-4" />
                           </Button>
                         </div>
+                        {/* Pack Mode Header / Ratio Pill */}
+                        {product?.packSize && product.packSize > 0 && (
+                          <div className="flex items-center justify-between gap-2 p-2 rounded-xl bg-muted/40 border text-xs">
+                            <div className="flex items-center gap-1.5 min-w-0">
+                              <Boxes className="h-3.5 w-3.5 text-primary shrink-0" />
+                              <span className="font-semibold text-foreground truncate">
+                                1 {product.packUnit || 'pack'} = {product.packSize} {product.unit}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1 bg-background p-0.5 rounded-lg border shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => updateItem(index, 'entryMode', 'pack')}
+                                className={cn(
+                                  "px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all",
+                                  (item.entryMode ?? 'pack') === 'pack'
+                                    ? "bg-primary text-primary-foreground shadow-xs"
+                                    : "text-muted-foreground hover:text-foreground"
+                                )}
+                              >
+                                By {product.packUnit || 'Pack'}
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => updateItem(index, 'entryMode', 'base')}
+                                className={cn(
+                                  "px-2 py-0.5 rounded-md text-[11px] font-semibold transition-all",
+                                  item.entryMode === 'base'
+                                    ? "bg-primary text-primary-foreground shadow-xs"
+                                    : "text-muted-foreground hover:text-foreground"
+                                )}
+                              >
+                                By {product.unit}
+                              </button>
+                            </div>
+                          </div>
+                        )}
+
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                          <label className="space-y-1 text-xs font-medium">Quantity
-                            <Input type="number" min="0.01" step="any" value={item.quantity} onChange={event => updateItem(index, 'quantity', event.target.value)} />
-                          </label>
-                          <label className="space-y-1 text-xs font-medium">Unit cost
-                            <Input type="number" min="0" step="0.01" value={item.purchaseRate} onChange={event => updateItem(index, 'purchaseRate', event.target.value)} />
-                          </label>
+                          {product?.packSize && product.packSize > 0 ? (
+                            (item.entryMode ?? 'pack') === 'pack' ? (
+                              <>
+                                <label className="space-y-1 text-xs font-medium">
+                                  <div className="flex items-center justify-between">
+                                    <span className="capitalize">{product.packUnit || 'Pack'}s</span>
+                                    <span className="text-[10px] text-muted-foreground font-normal tabular-nums">
+                                      = {item.quantity} {product.unit}
+                                    </span>
+                                  </div>
+                                  <Input
+                                    type="number"
+                                    min="0.01"
+                                    step="any"
+                                    value={item.packQuantity ?? ''}
+                                    onChange={event => updateItem(index, 'packQuantity', event.target.value)}
+                                    placeholder="e.g. 5"
+                                  />
+                                </label>
+                                <label className="space-y-1 text-xs font-medium">
+                                  <div className="flex items-center justify-between">
+                                    <span className="capitalize">Cost / {product.packUnit || 'pack'}</span>
+                                    <span className="text-[10px] text-muted-foreground font-normal tabular-nums">
+                                      Rs. {Number(item.purchaseRate || 0).toFixed(2)}/{product.unit}
+                                    </span>
+                                  </div>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={item.packCost ?? ''}
+                                    onChange={event => updateItem(index, 'packCost', event.target.value)}
+                                    placeholder="e.g. 3000"
+                                  />
+                                </label>
+                              </>
+                            ) : (
+                              <>
+                                <label className="space-y-1 text-xs font-medium">
+                                  <div className="flex items-center justify-between">
+                                    <span className="capitalize">Qty ({product.unit})</span>
+                                    <span className="text-[10px] text-muted-foreground font-normal tabular-nums">
+                                      = {item.packQuantity ?? ((item.quantity || 0) / product.packSize).toFixed(1)} {product.packUnit || 'pack'}s
+                                    </span>
+                                  </div>
+                                  <Input
+                                    type="number"
+                                    min="0.01"
+                                    step="any"
+                                    value={item.quantity}
+                                    onChange={event => updateItem(index, 'quantity', event.target.value)}
+                                  />
+                                </label>
+                                <label className="space-y-1 text-xs font-medium">
+                                  <div className="flex items-center justify-between">
+                                    <span>Unit cost</span>
+                                    <span className="text-[10px] text-muted-foreground font-normal tabular-nums">
+                                      Rs. {Number(item.packCost || (Number(item.purchaseRate || 0) * product.packSize)).toFixed(2)}/{product.packUnit || 'pack'}
+                                    </span>
+                                  </div>
+                                  <Input
+                                    type="number"
+                                    min="0"
+                                    step="0.01"
+                                    value={item.purchaseRate}
+                                    onChange={event => updateItem(index, 'purchaseRate', event.target.value)}
+                                  />
+                                </label>
+                              </>
+                            )
+                          ) : (
+                            <>
+                              <label className="space-y-1 text-xs font-medium">Quantity
+                                <Input type="number" min="0.01" step="any" value={item.quantity} onChange={event => updateItem(index, 'quantity', event.target.value)} />
+                              </label>
+                              <label className="space-y-1 text-xs font-medium">Unit cost
+                                <Input type="number" min="0" step="0.01" value={item.purchaseRate} onChange={event => updateItem(index, 'purchaseRate', event.target.value)} />
+                              </label>
+                            </>
+                          )}
                           {product?.hasVariants && (product.variants?.length ?? 0) > 0 && (
                             <label className="space-y-1 text-xs font-medium">Variant
                               <Select value={item.variantName ?? ''} onValueChange={value => updateItem(index, 'variantName', value)}>

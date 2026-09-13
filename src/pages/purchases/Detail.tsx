@@ -101,7 +101,14 @@ export default function PurchaseDetail() {
                         {items.map(({ item, product, batch }) => (
                             <div key={`${item.productId}-${item.batchId ?? item.productName}`} className="p-4 space-y-2">
                                 <div className="flex justify-between gap-3">
-                                    <div><p className="font-medium">{item.productName}</p><p className="text-xs text-muted-foreground">{product?.unit ?? 'unit'} · {item.quantity} × {format(item.purchaseRate)}</p></div>
+                                    <div>
+                                        <p className="font-medium">{item.productName}</p>
+                                        <p className="text-xs text-muted-foreground">
+                                            {item.packQuantity && item.packQuantity > 0
+                                                ? `${item.packQuantity} ${item.packUnit || 'pack'}(s) · ${item.quantity} ${product?.unit ?? 'unit'} × ${format(item.purchaseRate)}`
+                                                : `${product?.unit ?? 'unit'} · ${item.quantity} × ${format(item.purchaseRate)}`}
+                                        </p>
+                                    </div>
                                     <p className="font-semibold">{format(item.subtotal)}</p>
                                 </div>
                                 {batch && <div className="text-xs text-muted-foreground flex flex-wrap gap-x-4 gap-y-1"><span>Batch {batch.batchNumber}</span><span>Remaining {batch.quantity}</span>{batch.expiryDate && <span>Expires {batch.expiryDate}</span>}</div>}

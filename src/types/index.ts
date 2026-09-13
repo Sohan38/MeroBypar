@@ -339,6 +339,11 @@ export interface PurchaseItem {
   expiryMonths?: number | null;
   expiryDate?: string | null;
   notes?: string;
+  /** Optional packaging information when purchased in packs/cartons */
+  packQuantity?: number | null;
+  packCost?: number | null;
+  packUnit?: string | null;
+  packSize?: number | null;
 }
 
 export type PurchaseStatus = 'draft' | 'received' | 'cancelled';
