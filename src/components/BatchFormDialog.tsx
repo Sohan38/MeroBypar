@@ -187,6 +187,11 @@ interface BatchFormDialogProps {
   packUnit?: string | null;
   baseUnit?: string | null;
   onUpdatePack?: (size: number, unit: string) => void;
+  defaultQuantity?: number;
+  defaultPurchaseRate?: number;
+  defaultPackQuantity?: number | null;
+  defaultPackPurchaseCost?: number | null;
+  defaultSupplierId?: string;
 }
 
 export function BatchFormDialog({
@@ -205,6 +210,11 @@ export function BatchFormDialog({
   packUnit,
   baseUnit,
   onUpdatePack,
+  defaultQuantity,
+  defaultPurchaseRate,
+  defaultPackQuantity,
+  defaultPackPurchaseCost,
+  defaultSupplierId,
 }: BatchFormDialogProps) {
   const hasPack = Boolean(packSize && Number(packSize) > 0);
   const safePackSize = hasPack ? Number(packSize) : 1;
@@ -247,15 +257,15 @@ export function BatchFormDialog({
   const form = useForm<BatchFormValues>({
     resolver: zodResolver(batchSchema),
     defaultValues: {
-      supplierId: editBatch?.supplierId ?? '',
+      supplierId: editBatch?.supplierId ?? (defaultSupplierId || ''),
       batchNumber: editBatch?.batchNumber ?? nextBatchNumber,
       manufacturingDate:
         editBatch?.manufacturingDate?.split('T')[0] ?? '',
       expiryMode: editBatch?.expiryMonths ? 'months' : 'manual',
       expiryMonths: editBatch?.expiryMonths ?? undefined,
       expiryDate: editBatch?.expiryDate?.split('T')[0] ?? '',
-      initialQuantity: editBatch?.initialQuantity ?? (hasPack ? safePackSize : 1),
-      purchaseRate: editBatch?.purchaseRate ?? 0,
+      initialQuantity: editBatch?.initialQuantity ?? (defaultQuantity && defaultQuantity > 0 ? defaultQuantity : (hasPack ? safePackSize : 1)),
+      purchaseRate: editBatch?.purchaseRate ?? (defaultPurchaseRate && defaultPurchaseRate > 0 ? defaultPurchaseRate : 0),
       notes: editBatch?.notes ?? '',
     },
   });
@@ -293,11 +303,24 @@ export function BatchFormDialog({
   useEffect(() => {
     if (!open) return;
 
-    const initialQty = editBatch?.initialQuantity ?? (hasPack ? safePackSize : 1);
-    const initialRate = editBatch?.purchaseRate ?? 0;
+    const initialQty = editBatch?.initialQuantity ?? (
+      defaultQuantity && defaultQuantity > 0
+        ? defaultQuantity
+        : (defaultPackQuantity && defaultPackQuantity > 0 && safePackSize > 0
+            ? safeQty(safeMul(defaultPackQuantity, safePackSize))
+            : (hasPack ? safePackSize : 1))
+    );
+    const initialRate = editBatch?.purchaseRate ?? (
+      defaultPurchaseRate && defaultPurchaseRate > 0
+        ? defaultPurchaseRate
+        : (defaultPackPurchaseCost && defaultPackPurchaseCost > 0 && safePackSize > 0
+            ? safeDiv(defaultPackPurchaseCost, safePackSize, 6)
+            : 0)
+    );
+    const initialSupplierId = editBatch?.supplierId ?? (defaultSupplierId || '');
 
     form.reset({
-      supplierId: editBatch?.supplierId ?? '',
+      supplierId: initialSupplierId,
       batchNumber: editBatch?.batchNumber ?? nextBatchNumber,
       manufacturingDate:
         editBatch?.manufacturingDate?.split('T')[0] ?? '',
@@ -311,14 +334,18 @@ export function BatchFormDialog({
 
     if (hasPack) {
       setBatchUnitMode('pack');
-      const pQty = safePackSize > 0 ? safeDiv(initialQty, safePackSize, 3) : 1;
+      const pQty = (defaultPackQuantity && defaultPackQuantity > 0 && !editBatch)
+        ? defaultPackQuantity
+        : (safePackSize > 0 ? safeDiv(initialQty, safePackSize, 3) : 1);
       setPackQtyInput(formatQtyDisplay(pQty));
-      const pRate = safePackSize > 0 && initialRate > 0 ? safeMul(initialRate, safePackSize) : 0;
+      const pRate = (defaultPackPurchaseCost && defaultPackPurchaseCost > 0 && !editBatch)
+        ? defaultPackPurchaseCost
+        : (safePackSize > 0 && initialRate > 0 ? safeMul(initialRate, safePackSize, 6) : 0);
       setPackRateInput(pRate > 0 ? formatQtyDisplay(pRate, 2) : '');
     } else {
       setBatchUnitMode('base');
-      setPackQtyInput('1');
-      setPackRateInput('');
+      setPackQtyInput(formatQtyDisplay(initialQty));
+      setPackRateInput(initialRate > 0 ? formatQtyDisplay(initialRate, 2) : '');
     }
 
     setShowInlinePackSetup(false);
@@ -340,6 +367,11 @@ export function BatchFormDialog({
     form,
     hasPack,
     safePackSize,
+    defaultQuantity,
+    defaultPurchaseRate,
+    defaultPackQuantity,
+    defaultPackPurchaseCost,
+    defaultSupplierId,
   ]);
 
   // When adding, auto‑generate batch number & invoice on supplier selection
@@ -899,7 +931,7 @@ export function BatchFormDialog({
                               setPackRateInput(text);
                               const num = text === '' ? 0 : Number(text);
                               const baseCost = safePackSize > 0 ? safeDiv(num, safePackSize, 6) : 0;
-                              field.onChange(safeCurrency(baseCost));
+                              field.onChange(baseCost);
                             }}
                             className="h-9"
                             readOnly={!isNew}

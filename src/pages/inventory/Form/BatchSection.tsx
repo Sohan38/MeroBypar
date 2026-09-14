@@ -9,7 +9,7 @@ import { ProductBatch } from '@/types';
 import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
-import { formatMoney, safeMul } from '@/utils/unitUtils';
+import { formatMoney, safeMul, safeQty } from '@/utils/unitUtils';
 
 interface BatchSectionProps extends SectionProps {
   isExpiryEnabled: boolean;
@@ -43,6 +43,7 @@ export const BatchSection = React.memo(({
 
   const packSize = form.watch('packSize');
   const packUnit = form.watch('packUnit') || 'pack';
+  const packQuantity = form.watch('packQuantity');
   const baseUnit = form.watch('unit') || 'pcs';
   const isPackPricingEnabled = form.watch('isPackPricingEnabled');
   const hasPack = Boolean((isPackPricingEnabled || packSize) && Number(packSize) > 0);
@@ -121,14 +122,37 @@ export const BatchSection = React.memo(({
             {sortedBatches.length === 0 ? (
               <div
                 className={cn(
-                  "flex flex-col items-center justify-center py-7 border-2 border-dashed border-muted rounded-2xl bg-muted/10 transition-colors",
-                  isNew && "cursor-pointer active:bg-muted/30"
+                  "flex flex-col items-center justify-center py-7 px-4 text-center border-2 border-dashed border-primary/25 rounded-2xl bg-primary/[0.02] transition-colors",
+                  isNew && "cursor-pointer hover:bg-primary/[0.05] active:bg-primary/10"
                 )}
                 onClick={isNew ? onAddBatch : undefined}
               >
-                <FlaskConical className="h-8 w-8 text-muted-foreground/30 mb-2" />
-                <p className="text-sm font-medium text-muted-foreground">No batches yet</p>
-                {isNew && <p className="text-xs text-muted-foreground/60 mt-0.5">Tap to add your first batch</p>}
+                <div className="p-2.5 rounded-full bg-primary/10 text-primary mb-2.5">
+                  <FlaskConical className="h-6 w-6" />
+                </div>
+                <p className="text-sm font-semibold text-foreground">No batches added yet</p>
+                <p className="text-xs text-muted-foreground mt-1 max-w-sm leading-relaxed">
+                  {hasPack && Number(packQuantity) > 0 ? (
+                    <>
+                      You have <strong>{Number(packQuantity)} {packUnit}{Number(packQuantity) === 1 ? '' : 's'}</strong> ({safeQty(safeMul(Number(packQuantity), safePSize))} {baseUnit}) ready to be assigned with an expiry date & supplier.
+                    </>
+                  ) : (
+                    'Add your first batch to set stock, expiry date, and supplier.'
+                  )}
+                </p>
+                {isNew && (
+                  <Button
+                    type="button"
+                    size="sm"
+                    className="mt-3.5 h-8 gap-1.5 text-xs rounded-xl"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onAddBatch();
+                    }}
+                  >
+                    <Plus className="h-3.5 w-3.5" /> Add First Batch
+                  </Button>
+                )}
               </div>
             ) : (
               <div className="space-y-2 max-h-70 overflow-y-auto pr-0.5">

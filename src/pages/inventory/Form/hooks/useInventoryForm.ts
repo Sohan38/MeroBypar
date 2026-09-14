@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useWatch, useForm } from 'react-hook-form';
 import { useLocation, useParams } from 'wouter';
 import { v4 as uuidv4 } from 'uuid';
@@ -248,8 +248,8 @@ export function useInventoryForm(
         if (!hasExpiry || localBatches.length === 0) return purchaseRateWatch || 0;
         const totalQty = localBatches.reduce((sum, b) => sum + b.quantity, 0);
         if (totalQty === 0) return 0;
-        const totalCost = localBatches.reduce((sum, b) => sum + b.purchaseRate * b.quantity, 0);
-        return totalCost / totalQty;
+        const totalCost = localBatches.reduce((sum, b) => sum + safeMul(Number(b.purchaseRate || 0), Number(b.quantity || 0), 6), 0);
+        return safeDiv(totalCost, totalQty, 6);
     }, [hasExpiry, localBatches, purchaseRateWatch]);
 
     // Sync purchaseRate from supplierStocks
@@ -337,43 +337,111 @@ export function useInventoryForm(
         return w;
     }, [sellingRateWatch, purchaseRateWatch, minimumStockWatch, quantityWatch, hasExpiry, localBatches, isNew]);
 
+    const preBatchStockRef = useRef<{
+        quantity: number;
+        packQuantity: number | null;
+        purchaseRate: number;
+        packPurchaseCost: number | null;
+    }>({
+        quantity: 0,
+        packQuantity: null,
+        purchaseRate: 0,
+        packPurchaseCost: null,
+    });
+
     // Toggles
     const handleToggleExpiry = useCallback((checked: boolean) => {
         if (checked) {
+            // Snapshot current stock and rates before enabling batch tracking
+            const curQty = Number(form.getValues('quantity')) || 0;
+            const curPackQty = form.getValues('packQuantity');
+            const curRate = Number(form.getValues('purchaseRate')) || 0;
+            const curPackCost = form.getValues('packPurchaseCost');
+            preBatchStockRef.current = {
+                quantity: curQty,
+                packQuantity: curPackQty !== undefined && curPackQty !== null ? Number(curPackQty) : null,
+                purchaseRate: curRate,
+                packPurchaseCost: curPackCost !== undefined && curPackCost !== null ? Number(curPackCost) : null,
+            };
+
             form.setValue('hasVariants', false, { shouldValidate: true, shouldDirty: true });
             form.setValue('hasExpiry', true, { shouldValidate: true, shouldDirty: true });
-            const qty = form.getValues('quantity') || 0;
-            if (qty > 0) {
-                const rate = form.getValues('purchaseRate') || 0;
-                const ids = form.getValues('supplierIds') || [];
-                const batch: ProductBatch = {
-                    id: uuidv4(),
-                    productId: existingProduct?.id || '',
-                    batchNumber: nextBatchNumber,
-                    quantity: qty,
-                    purchaseRate: rate,
-                    expiryDate: '',
-                    supplierId: ids[0] || '',
-                    manufacturingDate: null,
-                    expiryMonths: null,
-                    initialQuantity: qty,
-                    notes: '',
-                    createdAt: new Date().toISOString(),
-                    updatedAt: new Date().toISOString(),
-                    deletedAt: null,
-                    version: 1,
-                };
-                setLocalBatches([batch]);
-            }
+            // Do NOT auto-create a phantom batch without expiry date or supplier!
         } else {
-            if (window.confirm('Are you sure you want to turn off expiry tracking? This will merge all batch stock into standard stock.')) {
+            if (localBatches.length > 0) {
+                if (window.confirm('Are you sure you want to turn off expiry tracking? This will merge all batch stock into standard stock.')) {
+                    form.setValue('hasExpiry', false, { shouldValidate: true, shouldDirty: true });
+                    form.setValue('purchaseRate', averagePurchaseRate, { shouldValidate: true, shouldDirty: true });
+                    form.setValue('quantity', totalBatchQuantity, { shouldValidate: true, shouldDirty: true });
+                    setLocalBatches([]);
+                }
+            } else {
                 form.setValue('hasExpiry', false, { shouldValidate: true, shouldDirty: true });
-                form.setValue('purchaseRate', averagePurchaseRate, { shouldValidate: true, shouldDirty: true });
-                form.setValue('quantity', totalBatchQuantity, { shouldValidate: true, shouldDirty: true });
-                setLocalBatches([]);
+                // Revert to pre-batch stock/rates if available
+                if (preBatchStockRef.current.quantity > 0) {
+                    form.setValue('quantity', preBatchStockRef.current.quantity, { shouldValidate: true, shouldDirty: true });
+                }
+                if (preBatchStockRef.current.purchaseRate > 0) {
+                    form.setValue('purchaseRate', preBatchStockRef.current.purchaseRate, { shouldValidate: true, shouldDirty: true });
+                }
+                if (preBatchStockRef.current.packQuantity !== null) {
+                    form.setValue('packQuantity', preBatchStockRef.current.packQuantity, { shouldDirty: true });
+                }
+                if (preBatchStockRef.current.packPurchaseCost !== null) {
+                    form.setValue('packPurchaseCost', preBatchStockRef.current.packPurchaseCost, { shouldDirty: true });
+                }
             }
         }
-    }, [form, nextBatchNumber, existingProduct, averagePurchaseRate, totalBatchQuantity]);
+    }, [form, localBatches.length, averagePurchaseRate, totalBatchQuantity]);
+
+    const [draftBatchDefaults, setDraftBatchDefaults] = useState<{
+        defaultQuantity?: number;
+        defaultPurchaseRate?: number;
+        defaultPackQuantity?: number | null;
+        defaultPackPurchaseCost?: number | null;
+        defaultSupplierId?: string;
+    }>({});
+
+    const getDraftBatchDefaults = useCallback(() => {
+        const safePSize = Number(form.getValues('packSize')) || 1;
+        const pQty = form.getValues('packQuantity');
+        const pCost = form.getValues('packPurchaseCost');
+        const qty = form.getValues('quantity');
+        const rate = form.getValues('purchaseRate');
+        const supplierIds = form.getValues('supplierIds') || [];
+
+        const packQtyNum = (pQty !== null && pQty !== undefined && Number(pQty) > 0)
+            ? Number(pQty)
+            : (preBatchStockRef.current.packQuantity && preBatchStockRef.current.packQuantity > 0
+                ? preBatchStockRef.current.packQuantity
+                : null);
+
+        const packCostNum = (pCost !== null && pCost !== undefined && Number(pCost) > 0)
+            ? Number(pCost)
+            : (preBatchStockRef.current.packPurchaseCost && preBatchStockRef.current.packPurchaseCost > 0
+                ? preBatchStockRef.current.packPurchaseCost
+                : null);
+
+        const effectiveQty = (packQtyNum !== null && packQtyNum > 0 && safePSize > 0)
+            ? safeQty(safeMul(packQtyNum, safePSize))
+            : (preBatchStockRef.current.quantity > 0
+                ? preBatchStockRef.current.quantity
+                : (qty && Number(qty) > 0 ? Number(qty) : undefined));
+
+        const effectiveRate = (packCostNum !== null && packCostNum > 0 && safePSize > 0)
+            ? safeDiv(packCostNum, safePSize, 6)
+            : (preBatchStockRef.current.purchaseRate > 0
+                ? preBatchStockRef.current.purchaseRate
+                : (rate && Number(rate) > 0 ? Number(rate) : undefined));
+
+        return {
+            defaultQuantity: effectiveQty,
+            defaultPurchaseRate: effectiveRate,
+            defaultPackQuantity: packQtyNum,
+            defaultPackPurchaseCost: packCostNum,
+            defaultSupplierId: supplierIds[0] || undefined,
+        };
+    }, [form]);
 
     const handleToggleVariants = useCallback((checked: boolean) => {
         if (checked) {
@@ -410,15 +478,20 @@ export function useInventoryForm(
             const totalPacks = Math.floor(totalQty / pSize);
             form.setValue('packQuantity', totalPacks, { shouldDirty: true });
 
-            const totalCost = batches.reduce((s, b) => safeCurrency(s + safeMul(Number(b.quantity || 0), Number(b.purchaseRate || 0))), 0);
+            const totalCost = batches.reduce((s, b) => s + safeMul(Number(b.quantity || 0), Number(b.purchaseRate || 0), 6), 0);
             if (totalQty > 0) {
                 const avgRate = safeDiv(totalCost, totalQty, 6);
-                form.setValue('packPurchaseCost', safeCurrency(safeMul(avgRate, pSize)), { shouldDirty: true });
+                form.setValue('packPurchaseCost', safeCurrency(safeMul(avgRate, pSize, 6)), { shouldDirty: true });
             }
         }
     }, [form]);
 
-    const handleAddBatch = useCallback(() => { setEditingBatch(null); setBatchDialogOpen(true); }, []);
+    const handleAddBatch = useCallback(() => {
+        setDraftBatchDefaults(getDraftBatchDefaults());
+        setEditingBatch(null);
+        setBatchDialogOpen(true);
+    }, [getDraftBatchDefaults]);
+
     const handleEditBatch = useCallback((batch: ProductBatch) => { setEditingBatch(batch); setBatchDialogOpen(true); }, []);
     const handleDeleteBatch = useCallback((bid: string) => {
         setLocalBatches(prev => {
@@ -704,6 +777,7 @@ export function useInventoryForm(
         isBatchesEnabled,
         isExpiryEnabled,
         isVariantsEnabled,
+        draftBatchDefaults,
         storage,
         onSubmit,
     };

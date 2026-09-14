@@ -67,6 +67,7 @@ export default function InventoryForm() {
     isBatchesEnabled,
     isExpiryEnabled,
     isVariantsEnabled,
+    draftBatchDefaults,
     onSubmit,
   } = useInventoryForm(supplierIdFromQuery, returnTo);
 
@@ -287,6 +288,11 @@ export default function InventoryForm() {
         packSize={form.watch('packSize')}
         packUnit={form.watch('packUnit')}
         baseUnit={form.watch('unit')}
+        defaultQuantity={draftBatchDefaults?.defaultQuantity}
+        defaultPurchaseRate={draftBatchDefaults?.defaultPurchaseRate}
+        defaultPackQuantity={draftBatchDefaults?.defaultPackQuantity}
+        defaultPackPurchaseCost={draftBatchDefaults?.defaultPackPurchaseCost}
+        defaultSupplierId={draftBatchDefaults?.defaultSupplierId}
         onUpdatePack={(size, unit) => {
           form.setValue('isPackPricingEnabled', true, { shouldDirty: true });
           form.setValue('packSize', size, { shouldDirty: true });
