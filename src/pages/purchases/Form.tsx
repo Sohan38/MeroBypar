@@ -21,6 +21,16 @@ import {
   Truck,
   X,
   Boxes,
+  Receipt,
+  Percent,
+  Tag,
+  CheckCircle2,
+  Calendar,
+  FileText,
+  MapPin,
+  Hash,
+  Sparkles,
+  PieChart,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PurchaseItem, PurchasePaymentStatus, PurchaseStatus } from '@/types';
@@ -28,6 +38,7 @@ import { createPurchase, updatePurchase } from '@/services/purchaseService';
 import { ProductSearchPicker } from '@/components/ProductSearchPicker';
 import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
 import { SupplierFormDialog } from '@/components/SupplierFormDialog';
+import { PaymentMethodPicker } from '@/components/PaymentMethodPicker';
 import { generateBatchNumber, generateSupplierInvoiceNumber } from '@/utils/numbering';
 import { isProductPurchasable } from '@/lib/productCapabilities';
 import { cn } from '@/lib/utils';
@@ -79,8 +90,15 @@ export default function PurchaseForm() {
     initialPurchaseRate: item.purchaseRate,
     entryMode: item.packQuantity && item.packQuantity > 0 ? 'pack' : 'base',
   })));
-  const [discount, setDiscount] = useState(String(existing?.discount ?? 0));
-  const [tax, setTax] = useState(String(existing?.tax ?? 0));
+  // Discount state: supports both flat Rs. and % modes
+  const [discountMode, setDiscountMode] = useState<'amount' | 'percent'>('amount');
+  const [discountAmount, setDiscountAmount] = useState(String(existing?.discount ?? 0));
+  const [discountPercent, setDiscountPercent] = useState('0');
+
+  // Tax state: supports both flat Rs. and % modes
+  const [taxMode, setTaxMode] = useState<'amount' | 'percent'>('amount');
+  const [taxAmount, setTaxAmount] = useState(String(existing?.tax ?? 0));
+  const [taxPercent, setTaxPercent] = useState(String(settings.taxRate || 13));
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
   const [supplierPresetName, setSupplierPresetName] = useState('');
   const [saving, setSaving] = useState(false);
@@ -121,10 +139,28 @@ export default function PurchaseForm() {
     const generated = generateSupplierInvoiceNumber(purchases, selectedSupplier?.name, purchaseDate);
     setInvoiceNumber(generated);
   }, [isNew, supplierId, purchaseDate, purchases, selectedSupplier?.name]);
+
   const subtotal = useMemo(() => safeCurrency(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0)), [items]);
-  const discountValue = Math.max(0, Number(discount) || 0);
-  const taxValue = Math.max(0, Number(tax) || 0);
-  const grandTotal = safeCurrency(Math.max(0, subtotal - discountValue + taxValue));
+
+  const discountValue = useMemo(() => {
+    if (discountMode === 'percent') {
+      const pct = Math.max(0, Number(discountPercent) || 0);
+      return safeCurrency(safeMul(subtotal, pct / 100));
+    }
+    return Math.max(0, Number(discountAmount) || 0);
+  }, [discountMode, discountPercent, discountAmount, subtotal]);
+
+  const taxableAmount = useMemo(() => Math.max(0, subtotal - discountValue), [subtotal, discountValue]);
+
+  const taxValue = useMemo(() => {
+    if (taxMode === 'percent') {
+      const pct = Math.max(0, Number(taxPercent) || 0);
+      return safeCurrency(safeMul(taxableAmount, pct / 100));
+    }
+    return Math.max(0, Number(taxAmount) || 0);
+  }, [taxMode, taxPercent, taxAmount, taxableAmount]);
+
+  const grandTotal = useMemo(() => safeCurrency(Math.max(0, subtotal - discountValue + taxValue)), [subtotal, discountValue, taxValue]);
 
   // Product picker items for ProductSearchPicker — filter out already-added products
   const addedProductIds = useMemo(() => new Set(items.map(i => i.productId)), [items]);
@@ -479,18 +515,24 @@ export default function PurchaseForm() {
               />
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
-                <label className="space-y-2 text-sm font-medium">
-                  Purchase date
-                  <Input type="date" value={purchaseDate} onChange={event => setPurchaseDate(event.target.value)} />
+                <label className="space-y-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <span className="flex items-center gap-1.5">
+                    <Calendar className="h-3.5 w-3.5 text-primary" /> Purchase Date
+                  </span>
+                  <Input type="date" value={purchaseDate} onChange={event => setPurchaseDate(event.target.value)} className="h-10 text-sm font-medium" />
                 </label>
-                <label className="space-y-2 text-sm font-medium">
-                  Supplier invoice #
-                  <Input value={invoiceNumber} onChange={event => setInvoiceNumber(event.target.value)} placeholder="e.g. SUP-2026-001" />
+                <label className="space-y-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <span className="flex items-center gap-1.5">
+                    <FileText className="h-3.5 w-3.5 text-primary" /> Supplier Invoice #
+                  </span>
+                  <Input value={invoiceNumber} onChange={event => setInvoiceNumber(event.target.value)} placeholder="e.g. SUP-2026-001" className="h-10 text-sm font-medium" />
                 </label>
-                <label className="space-y-2 text-sm font-medium">
-                  Receiving location
+                <label className="space-y-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <span className="flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-primary" /> Receiving Location
+                  </span>
                   <Select value={locationId || defaultLocationId || undefined} onValueChange={setLocationId}>
-                    <SelectTrigger><SelectValue placeholder="Select receiving location" /></SelectTrigger>
+                    <SelectTrigger className="h-10 text-sm font-medium"><SelectValue placeholder="Select receiving location" /></SelectTrigger>
                     <SelectContent>
                       {locations.map(loc => (
                         <SelectItem key={loc.id} value={loc.id}>{loc.name}</SelectItem>
@@ -498,17 +540,21 @@ export default function PurchaseForm() {
                     </SelectContent>
                   </Select>
                 </label>
-                <label className="space-y-2 text-sm font-medium">
-                  Reference number
-                  <Input value={referenceNumber} onChange={event => setReferenceNumber(event.target.value)} placeholder="Optional PO or delivery ref" />
+                <label className="space-y-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+                  <span className="flex items-center gap-1.5">
+                    <Hash className="h-3.5 w-3.5 text-primary" /> Reference Number
+                  </span>
+                  <Input value={referenceNumber} onChange={event => setReferenceNumber(event.target.value)} placeholder="Optional PO or delivery ref" className="h-10 text-sm font-medium" />
                 </label>
-                <label className="space-y-2 text-sm font-medium">
-                  Receiving status
+                <label className="space-y-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide sm:col-span-2">
+                  <span className="flex items-center gap-1.5">
+                    <CheckCircle2 className="h-3.5 w-3.5 text-primary" /> Inventory Receiving Status
+                  </span>
                   <Select value={status} onValueChange={value => setStatus(value as PurchaseStatus)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="h-10 text-sm font-medium"><SelectValue /></SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="received">Received — update inventory</SelectItem>
-                      <SelectItem value="draft">Draft — do not update inventory</SelectItem>
+                      <SelectItem value="received">Received — update physical inventory & batches</SelectItem>
+                      <SelectItem value="draft">Draft — save without updating physical stock</SelectItem>
                     </SelectContent>
                   </Select>
                 </label>
@@ -789,38 +835,409 @@ export default function PurchaseForm() {
 
         {/* ── Sidebar: Purchase summary ──────────────── */}
         <div>
-          <Card className="lg:sticky lg:top-20">
-            <CardContent className="p-4 md:p-6 space-y-4">
-              <h2 className="font-semibold border-b pb-3">Purchase summary</h2>
-              <div className="flex justify-between text-sm"><span className="text-muted-foreground">Subtotal</span><span>{format(subtotal)}</span></div>
-              <label className="flex items-center justify-between gap-3 text-sm"><span className="text-muted-foreground">Discount</span><Input className="w-28 text-right" type="number" min="0" step="0.01" value={discount} onChange={event => setDiscount(event.target.value)} /></label>
-              <label className="flex items-center justify-between gap-3 text-sm"><span className="text-muted-foreground">Tax</span><Input className="w-28 text-right" type="number" min="0" step="0.01" value={tax} onChange={event => setTax(event.target.value)} placeholder={String(settings.taxRate)} /></label>
-              <div className="border-t pt-4 flex justify-between items-center"><span className="font-bold">Total</span><span className="text-2xl font-bold text-primary">{format(grandTotal)}</span></div>
-              <div className="border-t pt-4 space-y-3">
-                <label className="space-y-2 text-sm font-medium block">Payment method
-                  <Select value={paymentMethod} onValueChange={value => setPaymentMethod(value as any)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>{['cash', 'qr', 'card', 'bank', 'split'].map(method => <SelectItem className="capitalize" key={method} value={method}>{method}</SelectItem>)}</SelectContent>
-                  </Select>
-                </label>
-                <label className="space-y-2 text-sm font-medium block">Payment status
-                  <Select value={paymentStatus} onValueChange={value => setPaymentStatus(value as PurchasePaymentStatus)}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="unpaid">Unpaid</SelectItem>
-                      <SelectItem value="partial">Partially paid</SelectItem>
-                      <SelectItem value="paid">Paid</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </label>
-                {paymentStatus === 'partial' && <label className="space-y-2 text-sm font-medium block">Paid amount
-                  <Input type="number" min="0" step="0.01" value={paidAmount} onChange={event => setPaidAmount(event.target.value)} />
-                </label>}
+          <Card className="lg:sticky lg:top-20 shadow-sm border-border/80 rounded-2xl overflow-hidden">
+            <CardContent className="p-4 md:p-5 space-y-4">
+              {/* Header */}
+              <div className="flex items-center justify-between border-b pb-3">
+                <div className="flex items-center gap-2">
+                  <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                    <Receipt className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h2 className="font-bold text-base leading-none">Purchase Summary</h2>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">Payment & tax breakdown</p>
+                  </div>
+                </div>
+                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+                  {items.length} {items.length === 1 ? 'item' : 'items'}
+                </span>
               </div>
-              <Button type="submit" size="lg" className="w-full" disabled={saving}>
-                <Save className="h-5 w-5 mr-2" /> {saving ? 'Saving…' : status === 'received' ? 'Save & receive stock' : 'Save draft'}
+
+              {/* Subtotal Row */}
+              <div className="flex justify-between items-center text-sm py-0.5">
+                <span className="text-muted-foreground font-medium">Subtotal</span>
+                <span className="font-bold text-foreground tabular-nums text-base">{format(subtotal)}</span>
+              </div>
+
+              {/* Discount Section */}
+              <div className="space-y-2 rounded-xl bg-muted/40 p-3 border border-border/60">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Tag className="h-3.5 w-3.5 text-primary" /> Discount
+                  </span>
+                  {/* Mode Toggle: Rs. vs % */}
+                  <div className="inline-flex rounded-lg border bg-background p-0.5 text-xs font-medium shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (discountMode !== 'amount') {
+                          setDiscountMode('amount');
+                          setDiscountAmount(String(discountValue));
+                        }
+                      }}
+                      className={cn(
+                        'px-2 py-0.5 rounded-md transition-all text-[11px]',
+                        discountMode === 'amount'
+                          ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      Rs.
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (discountMode !== 'percent') {
+                          setDiscountMode('percent');
+                          const pct = subtotal > 0 ? ((discountValue / subtotal) * 100).toFixed(1) : '0';
+                          setDiscountPercent(pct);
+                        }
+                      }}
+                      className={cn(
+                        'px-2 py-0.5 rounded-md transition-all text-[11px]',
+                        discountMode === 'percent'
+                          ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      %
+                    </button>
+                  </div>
+                </div>
+
+                {/* Input with inline preview */}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground select-none pointer-events-none">
+                      {discountMode === 'amount' ? 'Rs.' : '%'}
+                    </span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step={discountMode === 'amount' ? '0.01' : '0.1'}
+                      value={discountMode === 'amount' ? discountAmount : discountPercent}
+                      onFocus={e => e.target.select()}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (discountMode === 'amount') {
+                          setDiscountAmount(val);
+                        } else {
+                          setDiscountPercent(val);
+                        }
+                      }}
+                      placeholder="0"
+                      className="pl-8 h-9 text-xs font-medium text-right pr-2.5 bg-background"
+                    />
+                  </div>
+                  <div className="text-right min-w-[75px]">
+                    <span className={cn('text-xs font-bold tabular-nums', discountValue > 0 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground')}>
+                      -{format(discountValue)}
+                    </span>
+                    {discountMode === 'amount' && subtotal > 0 && discountValue > 0 && (
+                      <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
+                        ({((discountValue / subtotal) * 100).toFixed(1)}%)
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Quick presets */}
+                {discountMode === 'percent' ? (
+                  <div className="flex items-center gap-1 pt-0.5">
+                    <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Quick:</span>
+                    {[0, 5, 10, 15, 20].map(pct => (
+                      <button
+                        key={pct}
+                        type="button"
+                        onClick={() => setDiscountPercent(String(pct))}
+                        className={cn(
+                          'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
+                          Number(discountPercent) === pct
+                            ? 'bg-primary text-primary-foreground font-semibold border-primary'
+                            : 'bg-background hover:bg-muted text-muted-foreground border-border'
+                        )}
+                      >
+                        {pct}%
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1 pt-0.5">
+                    <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Quick:</span>
+                    {[0, 100, 250, 500, 1000].map(amt => (
+                      <button
+                        key={amt}
+                        type="button"
+                        onClick={() => setDiscountAmount(String(amt))}
+                        className={cn(
+                          'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
+                          Number(discountAmount) === amt
+                            ? 'bg-primary text-primary-foreground font-semibold border-primary'
+                            : 'bg-background hover:bg-muted text-muted-foreground border-border'
+                        )}
+                      >
+                        {amt === 0 ? 'Clear' : `Rs.${amt}`}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Tax Section */}
+              <div className="space-y-2 rounded-xl bg-muted/40 p-3 border border-border/60">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                    <Percent className="h-3.5 w-3.5 text-primary" /> Tax / VAT
+                  </span>
+                  {/* Mode Toggle: Rs. vs % */}
+                  <div className="inline-flex rounded-lg border bg-background p-0.5 text-xs font-medium shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (taxMode !== 'amount') {
+                          setTaxMode('amount');
+                          setTaxAmount(String(taxValue));
+                        }
+                      }}
+                      className={cn(
+                        'px-2 py-0.5 rounded-md transition-all text-[11px]',
+                        taxMode === 'amount'
+                          ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      Rs.
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (taxMode !== 'percent') {
+                          setTaxMode('percent');
+                          const base = Math.max(0, subtotal - discountValue);
+                          const pct = base > 0 ? ((taxValue / base) * 100).toFixed(1) : String(settings.taxRate || 13);
+                          setTaxPercent(pct);
+                        }
+                      }}
+                      className={cn(
+                        'px-2 py-0.5 rounded-md transition-all text-[11px]',
+                        taxMode === 'percent'
+                          ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground'
+                      )}
+                    >
+                      %
+                    </button>
+                  </div>
+                </div>
+
+                {/* Input with inline preview */}
+                <div className="flex items-center gap-2">
+                  <div className="relative flex-1">
+                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground select-none pointer-events-none">
+                      {taxMode === 'amount' ? 'Rs.' : '%'}
+                    </span>
+                    <Input
+                      type="number"
+                      min="0"
+                      step={taxMode === 'amount' ? '0.01' : '0.1'}
+                      value={taxMode === 'amount' ? taxAmount : taxPercent}
+                      onFocus={e => e.target.select()}
+                      onChange={e => {
+                        const val = e.target.value;
+                        if (taxMode === 'amount') {
+                          setTaxAmount(val);
+                        } else {
+                          setTaxPercent(val);
+                        }
+                      }}
+                      placeholder="0"
+                      className="pl-8 h-9 text-xs font-medium text-right pr-2.5 bg-background"
+                    />
+                  </div>
+                  <div className="text-right min-w-[75px]">
+                    <span className="text-xs font-bold tabular-nums text-foreground">
+                      +{format(taxValue)}
+                    </span>
+                    {taxMode === 'amount' && taxableAmount > 0 && taxValue > 0 && (
+                      <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
+                        ({((taxValue / taxableAmount) * 100).toFixed(1)}%)
+                      </p>
+                    )}
+                  </div>
+                </div>
+
+                {/* Quick presets for tax */}
+                {taxMode === 'percent' && (
+                  <div className="flex items-center gap-1 pt-0.5">
+                    <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Quick:</span>
+                    {[
+                      { label: '0%', val: 0 },
+                      { label: '5%', val: 5 },
+                      { label: '13% VAT', val: 13 },
+                    ].map(preset => (
+                      <button
+                        key={preset.val}
+                        type="button"
+                        onClick={() => setTaxPercent(String(preset.val))}
+                        className={cn(
+                          'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
+                          Number(taxPercent) === preset.val
+                            ? 'bg-primary text-primary-foreground font-semibold border-primary'
+                            : 'bg-background hover:bg-muted text-muted-foreground border-border'
+                        )}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Grand Total Box */}
+              <div className="rounded-2xl bg-primary/[0.06] dark:bg-primary/[0.12] border border-primary/25 p-4 space-y-1">
+                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+                  <span>Grand Total</span>
+                  {items.length > 0 && (
+                    <span className="text-[10px] font-normal text-primary">
+                      {items.reduce((s, i) => s + (Number(i.quantity) || 0), 0)} units total
+                    </span>
+                  )}
+                </div>
+                <div className="text-2xl font-black text-primary tracking-tight tabular-nums">
+                  {format(grandTotal)}
+                </div>
+              </div>
+
+              {/* Payment Method - using PaymentMethodPicker */}
+              <div className="border-t pt-3 space-y-3">
+                <PaymentMethodPicker
+                  label="Payment Method"
+                  selectedMethod={paymentMethod}
+                  onSelect={setPaymentMethod}
+                  methods={['cash', 'qr', 'card', 'bank', 'split', 'other']}
+                />
+
+                {/* Payment Status Segmented Picker */}
+                <div className="space-y-2 pt-1">
+                  <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider block">
+                    Payment Status
+                  </label>
+                  <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-muted/60 border">
+                    <button
+                      type="button"
+                      onClick={() => setPaymentStatus('unpaid')}
+                      className={cn(
+                        'py-2 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-0.5',
+                        paymentStatus === 'unpaid'
+                          ? 'bg-amber-600 text-white shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                      )}
+                    >
+                      <span>Unpaid</span>
+                      <span className="text-[9px] opacity-85 font-normal">On Credit</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPaymentStatus('partial');
+                        if (!paidAmount || Number(paidAmount) === 0) {
+                          setPaidAmount(String(safeCurrency(grandTotal / 2)));
+                        }
+                      }}
+                      className={cn(
+                        'py-2 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-0.5',
+                        paymentStatus === 'partial'
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                      )}
+                    >
+                      <span>Partial</span>
+                      <span className="text-[9px] opacity-85 font-normal">Split / Due</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPaymentStatus('paid')}
+                      className={cn(
+                        'py-2 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-0.5',
+                        paymentStatus === 'paid'
+                          ? 'bg-green-600 text-white shadow-xs'
+                          : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+                      )}
+                    >
+                      <span>Paid</span>
+                      <span className="text-[9px] opacity-85 font-normal">In Full</span>
+                    </button>
+                  </div>
+
+                  {/* Status-specific breakdown & Partial input */}
+                  {paymentStatus === 'partial' ? (
+                    <div className="space-y-2 rounded-xl border p-3 bg-muted/30">
+                      <div className="flex items-center justify-between text-xs font-medium">
+                        <span className="text-muted-foreground">Amount Paid</span>
+                        <span className="text-blue-600 dark:text-blue-400 font-semibold tabular-nums">
+                          Due: {format(Math.max(0, grandTotal - (Number(paidAmount) || 0)))}
+                        </span>
+                      </div>
+                      <div className="relative">
+                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground pointer-events-none select-none">
+                          Rs.
+                        </span>
+                        <Input
+                          type="number"
+                          min="0"
+                          max={grandTotal}
+                          step="0.01"
+                          value={paidAmount}
+                          onFocus={e => e.target.select()}
+                          onChange={event => setPaidAmount(event.target.value)}
+                          className="pl-9 h-9 text-xs font-semibold bg-background"
+                        />
+                      </div>
+                      {/* Quick partial chips */}
+                      <div className="flex items-center gap-1 pt-0.5">
+                        <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Preset:</span>
+                        {[
+                          { label: '25%', factor: 0.25 },
+                          { label: '50%', factor: 0.5 },
+                          { label: '75%', factor: 0.75 },
+                        ].map(preset => (
+                          <button
+                            key={preset.label}
+                            type="button"
+                            onClick={() => setPaidAmount(String(safeCurrency(grandTotal * preset.factor)))}
+                            className="text-[10px] px-2 py-0.5 rounded border bg-background hover:bg-muted text-muted-foreground"
+                          >
+                            {preset.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ) : paymentStatus === 'unpaid' ? (
+                    <div className="rounded-xl border border-amber-200/60 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/50 p-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+                      <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+                      <div>
+                        <p className="font-semibold leading-tight">Supplier Payable</p>
+                        <p className="text-[11px] opacity-90 mt-0.5">
+                          Full {format(grandTotal)} will be added to {selectedSupplier?.name ? `${selectedSupplier.name}'s` : "supplier's"} credit balance.
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl border border-green-200/60 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900/50 p-2.5 text-xs text-green-800 dark:text-green-300 flex items-center gap-2">
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+                      <span className="font-medium text-[11px]">Paid in full via {paymentMethod.toUpperCase()}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Submit CTA */}
+              <Button type="submit" size="lg" className="w-full h-12 text-sm font-semibold rounded-xl shadow-sm transition-all" disabled={saving}>
+                <Save className="h-4 w-4 mr-2" /> {saving ? 'Saving…' : status === 'received' ? 'Save & receive stock' : 'Save draft'}
               </Button>
-              <p className="text-[11px] text-center text-muted-foreground">Received purchases update stock, supplier stock, costs, and batches together.</p>
+              <p className="text-[11px] text-center text-muted-foreground leading-snug">
+                Received purchases automatically update inventory stock, location stock, and supplier costs.
+              </p>
             </CardContent>
           </Card>
         </div>
