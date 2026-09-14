@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect } from 'react';
 import { FormField, FormItem, FormLabel, FormControl, FormMessage } from '@/components/ui/form';
 import { Input } from '@/components/ui/input';
 import { CheckCircle2, TrendingUp, TrendingDown, Lock } from 'lucide-react';
@@ -33,13 +33,64 @@ export const PricingSection = React.memo(({
   const profitPerUnit = sellingRate - effectivePurchase;
   const profitMargin = sellingRate > 0 ? Math.round((profitPerUnit / sellingRate) * 100) : 0;
 
-  const sellingError = form.formState.errors.sellingRate?.message;
-  const purchaseError = form.formState.errors.purchaseRate?.message;
-  const sellingValid = !sellingError && sellingRate > 0;
+  const rawSellingError = form.formState.errors.sellingRate?.message;
+  // If sellingRate is a valid positive number (>= 0.01), any remaining error in formState is stale and ignored
+  const sellingError = sellingRate >= 0.01 ? undefined : rawSellingError;
+  const rawPurchaseError = form.formState.errors.purchaseRate?.message;
+  const purchaseError = purchaseRate >= 0 ? undefined : rawPurchaseError;
+
+  const sellingValid = !sellingError && sellingRate >= 0.01;
   const purchaseValid = !purchaseError && purchaseRate >= 0;
   const isProfit = profitPerUnit >= 0;
 
   const isPurchaseLocked = hasSupplier || !isNew || isPackPricingEnabled;
+
+  // Auto-clear stale errors when valid values are in state
+  useEffect(() => {
+    if (sellingRate >= 0.01 && form.formState.errors.sellingRate) {
+      form.clearErrors('sellingRate');
+    }
+  }, [sellingRate, form]);
+
+  useEffect(() => {
+    if (purchaseRate >= 0 && form.formState.errors.purchaseRate) {
+      form.clearErrors('purchaseRate');
+    }
+  }, [purchaseRate, form]);
+
+  const handleSellingRateChange = useCallback((
+    e: React.ChangeEvent<HTMLInputElement>,
+    fieldOnChange: (val: number) => void
+  ) => {
+    let raw = e.target.value;
+    if (/^0\d+/.test(raw)) {
+      raw = String(Number(raw));
+    }
+    const val = raw === '' ? 0 : Number(raw);
+    fieldOnChange(val);
+    if (val >= 0.01) {
+      if (form.formState.errors.sellingRate) {
+        form.clearErrors('sellingRate');
+      }
+    } else if (raw !== '') {
+      form.trigger('sellingRate');
+    }
+  }, [form]);
+
+  const handlePurchaseRateChange = useCallback((
+    e: React.ChangeEvent<HTMLInputElement>,
+    fieldOnChange: (val: number) => void
+  ) => {
+    let raw = e.target.value;
+    if (/^0\d+/.test(raw)) {
+      raw = String(Number(raw));
+    }
+    const val = raw === '' ? 0 : Number(raw);
+    fieldOnChange(val);
+    if (val >= 0 && form.formState.errors.purchaseRate) {
+      form.clearErrors('purchaseRate');
+    }
+  }, [form]);
 
   return (
     <section className="px-4 py-4 space-y-4">
@@ -64,7 +115,8 @@ export const PricingSection = React.memo(({
                       type="number" step="0.01" min={0.01} placeholder="0.00"
                       {...field}
                       value={field.value === 0 ? '' : field.value}
-                      onChange={e => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
+                      onFocus={e => e.target.select()}
+                      onChange={e => handleSellingRateChange(e, field.onChange)}
                       className={cn(
                         'pl-11 h-11 text-base font-medium transition-colors',
                         sellingError && 'border-destructive focus-visible:ring-destructive/30',
@@ -74,7 +126,7 @@ export const PricingSection = React.memo(({
                     {sellingValid && <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-500 pointer-events-none" />}
                   </div>
                 </FormControl>
-                <FormMessage className="text-xs" />
+                {sellingError && <FormMessage className="text-xs">{sellingError}</FormMessage>}
               </FormItem>
             )} />
 
@@ -101,7 +153,8 @@ export const PricingSection = React.memo(({
                       type="number" step="0.01" min={0} placeholder="0.00"
                       {...field}
                       value={field.value === 0 ? '' : (hasSupplier ? formatMoney(field.value) : field.value)}
-                      onChange={e => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
+                      onFocus={e => e.target.select()}
+                      onChange={e => handlePurchaseRateChange(e, field.onChange)}
                       readOnly={isPurchaseLocked}
                       disabled={isPurchaseLocked}
                       className={cn(
@@ -127,7 +180,7 @@ export const PricingSection = React.memo(({
                     {isMultiSupplier ? 'Weighted avg. from suppliers' : 'Set in Suppliers section below'}
                   </p>
                 ) : (
-                  <FormMessage className="text-xs" />
+                  purchaseError && <FormMessage className="text-xs">{purchaseError}</FormMessage>
                 )}
               </FormItem>
             )} />
@@ -143,7 +196,8 @@ export const PricingSection = React.memo(({
                       type="number" step="0.01" min={0.01} placeholder="0.00"
                       {...field}
                       value={field.value === 0 ? '' : field.value}
-                      onChange={e => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
+                      onFocus={e => e.target.select()}
+                      onChange={e => handleSellingRateChange(e, field.onChange)}
                       className={cn(
                         'pl-11 h-11 text-base font-medium transition-colors',
                         sellingError && 'border-destructive focus-visible:ring-destructive/30',
@@ -153,7 +207,7 @@ export const PricingSection = React.memo(({
                     {sellingValid && <CheckCircle2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-green-500 pointer-events-none" />}
                   </div>
                 </FormControl>
-                <FormMessage className="text-xs" />
+                {sellingError && <FormMessage className="text-xs">{sellingError}</FormMessage>}
               </FormItem>
             )} />
           </div>

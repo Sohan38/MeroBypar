@@ -59,9 +59,18 @@ const NumericField = ({
               placeholder="0"
               {...field}
               value={field.value === 0 ? '' : field.value}
+              onFocus={e => e.target.select()}
               onChange={e => {
-                const val = e.target.value;
-                field.onChange(val === '' ? 0 : Number(val));
+                let raw = e.target.value;
+                if (/^0\d+/.test(raw)) {
+                  raw = raw.replace(/^0+/, '');
+                  e.target.value = raw;
+                }
+                const val = raw === '' ? 0 : Number(raw);
+                field.onChange(val);
+                if (val >= 0 && form.formState.errors[name]) {
+                  form.clearErrors(name);
+                }
               }}
               className={cn(
                 'transition-colors h-11 text-base font-medium',
@@ -152,6 +161,9 @@ const CurrentStockField = ({
                 }
                 const val = raw === '' ? 0 : Number(raw);
                 field.onChange(val);
+                if (val >= 0 && form.formState.errors.quantity) {
+                  form.clearErrors('quantity');
+                }
               }}
               readOnly={readOnly}
               disabled={readOnly}
