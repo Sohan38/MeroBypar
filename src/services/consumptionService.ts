@@ -1,6 +1,7 @@
 import { ConsumptionTransaction, ConsumptionItem, Product, ProductBatch, InventoryLocationStock, InventoryMovement, ProductUnit } from '../types';
 import { getLocationStockForProduct } from '../lib/locationStock';
 import { v4 as uuidv4 } from 'uuid';
+import { safeCurrency, safeQty, safeMul } from '@/utils/unitUtils';
 
 /**
  * Configuration for creating a consumption transaction
@@ -139,8 +140,8 @@ export class ConsumptionService {
 
             // Calculate cost from batch's purchase rate or product rate
             const unitCost = selectedBatch ? selectedBatch.purchaseRate : (product.purchaseRate ?? 0);
-            const itemTotalCost = input.quantity * unitCost;
-            totalCost += itemTotalCost;
+            const itemTotalCost = safeCurrency(safeMul(input.quantity, unitCost));
+            totalCost = safeCurrency(totalCost + itemTotalCost);
 
             // Create consumption item
             items.push({
@@ -176,7 +177,7 @@ export class ConsumptionService {
             // Update batch quantity only if batch exists
             if (selectedBatch) {
                 const batchUpdateData: Partial<ProductBatch> = {
-                    quantity: Math.max(0, selectedBatch.quantity - input.quantity),
+                    quantity: safeQty(Math.max(0, selectedBatch.quantity - input.quantity)),
                     updatedAt: new Date().toISOString(),
                     version: (selectedBatch.version || 0) + 1,
                 };
@@ -187,7 +188,7 @@ export class ConsumptionService {
             // (products created before location tracking may not have location stock records)
             if (locStock) {
                 const updatedLocStock: Partial<InventoryLocationStock> = {
-                    quantity: Math.max(0, locStock.quantity - input.quantity),
+                    quantity: safeQty(Math.max(0, locStock.quantity - input.quantity)),
                     lastMovementAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString(),
                     version: (locStock.version || 0) + 1,
@@ -201,10 +202,10 @@ export class ConsumptionService {
                 updatedAt: new Date().toISOString(),
                 version: (product.version || 0) + 1,
             };
-            const newProductQuantity = Math.max(
+            const newProductQuantity = safeQty(Math.max(
                 0,
                 Number(currentProductUpdate.quantity || product.quantity) - input.quantity
-            );
+            ));
             productUpdates.set(product.id, {
                 ...currentProductUpdate,
                 quantity: newProductQuantity,

@@ -9,6 +9,7 @@ import {
 } from '@/types';
 import { IStorageProvider } from '@/storage/IStorageProvider';
 import { FinancialPostingService } from './financialPostingService';
+import { safeCurrency, safeQty, safeMul, safeDiv } from '@/utils/unitUtils';
 
 /**
  * Purchase inventory transitions live here instead of in the form component.
@@ -31,15 +32,20 @@ function now() {
 }
 
 function normalizeItem(item: PurchaseItem): PurchaseItem {
-    const quantity = Number(item.quantity);
-    const purchaseRate = Number(item.purchaseRate);
+    const quantity = safeQty(item.quantity);
+    const purchaseRate = safeCurrency(item.purchaseRate);
+    const packQuantity = item.packQuantity != null ? safeQty(item.packQuantity) : null;
+    const packCost = item.packCost != null ? safeCurrency(item.packCost) : null;
+    const subtotal = (packQuantity != null && packQuantity > 0 && packCost != null && packCost > 0)
+        ? safeCurrency(safeMul(packQuantity, packCost))
+        : safeCurrency(safeMul(quantity, purchaseRate));
     return {
         ...item,
         quantity,
         purchaseRate,
-        subtotal: quantity * purchaseRate,
-        packQuantity: item.packQuantity != null ? Number(item.packQuantity) : null,
-        packCost: item.packCost != null ? Number(item.packCost) : null,
+        subtotal,
+        packQuantity,
+        packCost,
         packUnit: item.packUnit ?? null,
         packSize: item.packSize != null ? Number(item.packSize) : null,
     };
@@ -156,9 +162,9 @@ function revertPurchase(
             }
             supplierRecord.stock -= item.quantity;
             supplierRecord.baseQuantity = Math.max(0, (supplierRecord.baseQuantity ?? (supplierRecord.stock + item.quantity)) - item.quantity);
-            supplierRecord.totalPurchaseCost = Math.max(0, (supplierRecord.totalPurchaseCost ?? 0) - item.subtotal);
+            supplierRecord.totalPurchaseCost = safeCurrency(Math.max(0, (supplierRecord.totalPurchaseCost ?? 0) - item.subtotal));
             if (product.packSize && product.packSize > 0) {
-                supplierRecord.packQuantity = Math.round((supplierRecord.stock / product.packSize) * 1000) / 1000;
+                supplierRecord.packQuantity = safeQty(safeDiv(supplierRecord.stock, product.packSize, 3));
             }
         }
         product.supplierIds = supplierState.supplierIds;
@@ -214,10 +220,10 @@ function applyPurchase(
         supplierRecord.cost = item.purchaseRate;
         supplierRecord.lastPurchaseDate = purchase.date;
         supplierRecord.baseQuantity = (supplierRecord.baseQuantity ?? (supplierRecord.stock - item.quantity)) + item.quantity;
-        supplierRecord.totalPurchaseCost = (supplierRecord.totalPurchaseCost ?? 0) + item.subtotal;
+        supplierRecord.totalPurchaseCost = safeCurrency((supplierRecord.totalPurchaseCost ?? 0) + item.subtotal);
         if (product.packSize && product.packSize > 0) {
             supplierRecord.appliedPackSize = product.packSize;
-            supplierRecord.packQuantity = Math.round((supplierRecord.stock / product.packSize) * 1000) / 1000;
+            supplierRecord.packQuantity = safeQty(safeDiv(supplierRecord.stock, product.packSize, 3));
             if (item.packCost != null && item.packCost > 0) {
                 supplierRecord.packCost = item.packCost;
             }
@@ -337,9 +343,9 @@ function syncTotals(inventory: Product[]) {
         const records = product.supplierStocks ?? [];
         const ids = getSupplierIds(product);
         if (ids.length > 1 || records.length > 1) {
-            product.quantity = records.reduce((total, record) => total + Math.max(0, Number(record.stock) || 0), 0);
+            product.quantity = safeQty(records.reduce((total, record) => total + Math.max(0, Number(record.stock) || 0), 0));
         }
-        product.profitPerUnit = product.sellingRate - product.purchaseRate;
+        product.profitPerUnit = safeCurrency(product.sellingRate - product.purchaseRate);
     }
 }
 

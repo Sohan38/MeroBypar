@@ -9,6 +9,7 @@ import { ProductBatch } from '@/types';
 import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
+import { formatMoney, safeMul } from '@/utils/unitUtils';
 
 interface BatchSectionProps extends SectionProps {
   isExpiryEnabled: boolean;
@@ -149,10 +150,10 @@ export const BatchSection = React.memo(({
                           )}
                         </span>
                         <span>
-                          Cost: <strong className="text-foreground">Rs. {batch.purchaseRate.toFixed(2)}</strong>/{baseUnit}
+                          Cost: <strong className="text-foreground">Rs. {formatMoney(batch.purchaseRate)}</strong>/{baseUnit}
                           {hasPack && Number(batch.purchaseRate) > 0 && (
                             <span className="text-[11px] opacity-80 ml-1">
-                              (Rs. {(Number(batch.purchaseRate) * safePSize).toFixed(2)}/{packUnit})
+                              (Rs. {formatMoney(safeMul(batch.purchaseRate, safePSize))}/{packUnit})
                             </span>
                           )}
                         </span>

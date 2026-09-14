@@ -28,6 +28,7 @@ import {
 import { UseFormReturn } from 'react-hook-form';
 import { ProductFormValues } from './types';
 import { ProductBatch, Supplier } from '@/types';
+import { formatMoney } from '@/utils/unitUtils';
 import { cn } from '@/lib/utils';
 import { safeCurrency, safeQty, getSafePackSize, calculateTotalSupplierStock, calculateWeightedAverageCost } from '@/utils/unitUtils';
 
@@ -205,7 +206,7 @@ export const InventoryConfirmDialog = React.memo(({
                 <div className="p-2 rounded-xl bg-muted/30 border">
                   <span className="text-[9px] uppercase font-bold text-muted-foreground block tracking-wider">Selling (MRP)</span>
                   <span className="text-xs sm:text-sm font-bold text-foreground tabular-nums">
-                    Rs. {sellingRate.toFixed(2)}
+                    Rs. {formatMoney(sellingRate)}
                   </span>
                 </div>
 
@@ -214,7 +215,7 @@ export const InventoryConfirmDialog = React.memo(({
                     {isMultiSupplier || hasExpiry ? 'Avg. Cost' : 'Cost'}
                   </span>
                   <span className="text-xs sm:text-sm font-bold text-foreground tabular-nums">
-                    Rs. {effectivePurchaseRate.toFixed(2)}
+                    Rs. {formatMoney(effectivePurchaseRate)}
                   </span>
                 </div>
 
@@ -259,10 +260,10 @@ export const InventoryConfirmDialog = React.memo(({
                         {isMultiSupplier ? 'Avg. Pack Cost' : 'Cost per Pack'}
                       </span>
                       <p className="font-bold text-xs text-foreground tabular-nums">
-                        Rs. {(effectivePackCost ?? 0).toFixed(2)}
+                        Rs. {formatMoney(effectivePackCost)}
                       </p>
                       <p className="text-[10px] text-muted-foreground">
-                        Rs. {effectivePurchaseRate.toFixed(2)} / {baseUnit}
+                        Rs. {formatMoney(effectivePurchaseRate)} / {baseUnit}
                       </p>
                     </div>
                   </div>
@@ -321,7 +322,7 @@ export const InventoryConfirmDialog = React.memo(({
               {!isProfit && sellingRate > 0 && (
                 <div className="flex items-center gap-2 p-2 rounded-xl border border-destructive/30 bg-destructive/10 text-destructive text-xs font-medium">
                   <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
-                  <span>Selling below cost (Cost: Rs. {effectivePurchaseRate.toFixed(2)})</span>
+                  <span>Selling below cost (Cost: Rs. {formatMoney(effectivePurchaseRate)})</span>
                 </div>
               )}
 
@@ -405,8 +406,8 @@ export const InventoryConfirmDialog = React.memo(({
                               </div>
                               <p className="text-[10px] text-muted-foreground">
                                 {hasPackPricing
-                                  ? `@ Rs. ${sPackCost.toFixed(2)} / ${packUnit}`
-                                  : `@ Rs. ${sUnitCost.toFixed(2)} / ${baseUnit}`}
+                                  ? `@ Rs. ${formatMoney(sPackCost)} / ${packUnit}`
+                                  : `@ Rs. ${formatMoney(sUnitCost)} / ${baseUnit}`}
                               </p>
                             </div>
                           </div>
@@ -418,7 +419,7 @@ export const InventoryConfirmDialog = React.memo(({
                                   {sPacks} {packUnit}(s)
                                 </span>
                                 <p className="text-[10px] text-muted-foreground tabular-nums">
-                                  {sBaseQty} {baseUnit} · Rs. {sTotalCost.toFixed(2)}
+                                  {sBaseQty} {baseUnit} · Rs. {formatMoney(sTotalCost)}
                                 </p>
                               </>
                             ) : (
@@ -427,7 +428,7 @@ export const InventoryConfirmDialog = React.memo(({
                                   {sBaseQty} {baseUnit}
                                 </span>
                                 <p className="text-[10px] text-muted-foreground tabular-nums">
-                                  Rs. {sTotalCost.toFixed(2)}
+                                  Rs. {formatMoney(sTotalCost)}
                                 </p>
                               </>
                             )}
@@ -490,7 +491,7 @@ export const InventoryConfirmDialog = React.memo(({
                                 {bQty} {baseUnit}
                               </span>
                               <p className="text-[10px] text-muted-foreground tabular-nums">
-                                @ Rs. {bCost.toFixed(2)}
+                                @ Rs. {formatMoney(bCost)}
                               </p>
                             </div>
                           </div>

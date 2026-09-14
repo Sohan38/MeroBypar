@@ -7,7 +7,7 @@ import { ProductUnit } from '@/types';
 import { useWatch } from 'react-hook-form';
 import { cn } from '@/lib/utils';
 import { Package, AlertTriangle, Lock } from 'lucide-react';
-import { UNIT_CATEGORIES, isDecimalUnit, formatQuantity } from '@/utils/unitUtils';
+import { UNIT_CATEGORIES, isDecimalUnit, formatQuantity, safeDiv, formatQtyDisplay } from '@/utils/unitUtils';
 
 interface StockSectionProps extends SectionProps {
   isNew: boolean;
@@ -99,7 +99,7 @@ export const StockSection = React.memo(({
   const SummaryChip = ({ label, qty, accent = false }: { label: string; qty: number; accent?: boolean }) => {
     const safePSize = (watchedPackSize && Number(watchedPackSize) > 0) ? Number(watchedPackSize) : 1;
     const packEquivalent = isPackActive
-      ? Math.round((qty / safePSize) * 100) / 100
+      ? safeDiv(qty, safePSize, 2)
       : null;
 
     return (
@@ -119,7 +119,7 @@ export const StockSection = React.memo(({
           </span>
           {packEquivalent !== null && (
             <p className="text-[11px] text-muted-foreground font-normal">
-              ≈ {packEquivalent} {watchedPackUnit || 'pack'}(s)
+              ≈ {formatQtyDisplay(packEquivalent)} {watchedPackUnit || 'pack'}(s)
             </p>
           )}
         </div>

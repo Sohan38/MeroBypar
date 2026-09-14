@@ -48,6 +48,14 @@ import {
   generateBatchNumber,
   generateSupplierInvoiceNumber,
 } from '@/utils/numbering';
+import {
+  safeCurrency,
+  safeQty,
+  safeMul,
+  safeDiv,
+  formatMoney,
+  formatQtyDisplay,
+} from '@/utils/unitUtils';
 
 const batchSchema = z.object({
   supplierId: z.string().min(1, 'Supplier is required'),
@@ -303,10 +311,10 @@ export function BatchFormDialog({
 
     if (hasPack) {
       setBatchUnitMode('pack');
-      const pQty = safePackSize > 0 ? (initialQty / safePackSize) : 1;
-      setPackQtyInput(pQty % 1 === 0 ? pQty.toString() : pQty.toFixed(2));
-      const pRate = safePackSize > 0 && initialRate > 0 ? (initialRate * safePackSize) : 0;
-      setPackRateInput(pRate > 0 ? (pRate % 1 === 0 ? pRate.toString() : pRate.toFixed(2)) : '');
+      const pQty = safePackSize > 0 ? safeDiv(initialQty, safePackSize, 3) : 1;
+      setPackQtyInput(formatQtyDisplay(pQty));
+      const pRate = safePackSize > 0 && initialRate > 0 ? safeMul(initialRate, safePackSize) : 0;
+      setPackRateInput(pRate > 0 ? formatQtyDisplay(pRate, 2) : '');
     } else {
       setBatchUnitMode('base');
       setPackQtyInput('1');
@@ -759,11 +767,11 @@ export function BatchFormDialog({
                     onClick={() => {
                       setBatchUnitMode('pack');
                       const curQty = Number(form.getValues('initialQuantity')) || 0;
-                      const pQ = safePackSize > 0 ? curQty / safePackSize : 1;
-                      setPackQtyInput(pQ % 1 === 0 ? pQ.toString() : pQ.toFixed(2));
+                      const pQ = safePackSize > 0 ? safeDiv(curQty, safePackSize, 3) : 1;
+                      setPackQtyInput(formatQtyDisplay(pQ));
                       const curRate = Number(form.getValues('purchaseRate')) || 0;
-                      const pR = safePackSize > 0 && curRate > 0 ? curRate * safePackSize : 0;
-                      setPackRateInput(pR > 0 ? (pR % 1 === 0 ? pR.toString() : pR.toFixed(2)) : '');
+                      const pR = safePackSize > 0 && curRate > 0 ? safeMul(curRate, safePackSize) : 0;
+                      setPackRateInput(pR > 0 ? formatQtyDisplay(pR, 2) : '');
                     }}
                     className={cn(
                       "px-2.5 py-0.5 rounded-md text-[11px] font-semibold transition-all",
@@ -820,7 +828,7 @@ export function BatchFormDialog({
                               const text = event.target.value;
                               setPackQtyInput(text);
                               const num = text === '' ? 0 : Number(text);
-                              const basePcs = Math.round(num * safePackSize * 1000) / 1000;
+                              const basePcs = safeQty(safeMul(num, safePackSize));
                               field.onChange(basePcs);
                             }}
                             className="h-9"
@@ -838,8 +846,8 @@ export function BatchFormDialog({
                               const rawVal = event.target.value === '' ? 0 : Number(event.target.value);
                               field.onChange(rawVal);
                               if (safePackSize > 0) {
-                                const pQ = rawVal / safePackSize;
-                                setPackQtyInput(pQ % 1 === 0 ? pQ.toString() : pQ.toFixed(2));
+                                const pQ = safeDiv(rawVal, safePackSize, 3);
+                                setPackQtyInput(formatQtyDisplay(pQ));
                               }
                             }}
                             className="h-9"
@@ -873,7 +881,7 @@ export function BatchFormDialog({
                         <span>{hasPack && batchUnitMode === 'pack' ? `Cost / ${pUnit}` : 'Purchase Rate'}</span>
                         {hasPack && batchUnitMode === 'pack' && currentRateVal > 0 && (
                           <span className="text-[10px] font-normal lowercase tracking-normal tabular-nums">
-                            Rs. {currentRateVal.toFixed(2)}/{bUnit}
+                            Rs. {formatMoney(currentRateVal)}/{bUnit}
                           </span>
                         )}
                       </FormLabel>
@@ -890,8 +898,8 @@ export function BatchFormDialog({
                               const text = event.target.value;
                               setPackRateInput(text);
                               const num = text === '' ? 0 : Number(text);
-                              const baseCost = safePackSize > 0 ? (num / safePackSize) : 0;
-                              field.onChange(Math.round(baseCost * 100) / 100);
+                              const baseCost = safePackSize > 0 ? safeDiv(num, safePackSize, 6) : 0;
+                              field.onChange(safeCurrency(baseCost));
                             }}
                             className="h-9"
                             readOnly={!isNew}
@@ -908,8 +916,8 @@ export function BatchFormDialog({
                               const rawVal = event.target.value === '' ? 0 : Number(event.target.value);
                               field.onChange(rawVal);
                               if (safePackSize > 0 && rawVal > 0) {
-                                const pR = rawVal * safePackSize;
-                                setPackRateInput(pR % 1 === 0 ? pR.toString() : pR.toFixed(2));
+                                const pR = safeMul(rawVal, safePackSize);
+                                setPackRateInput(formatQtyDisplay(pR, 2));
                               }
                             }}
                             className="h-9"
@@ -926,19 +934,32 @@ export function BatchFormDialog({
               />
             </div>
 
-            {(Number(form.watch('initialQuantity') || 0) > 0) && (Number(form.watch('purchaseRate') || 0) > 0) && (
-              <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-muted/30 border text-xs">
-                <span className="text-muted-foreground">Batch Total Cost:</span>
-                <span className="font-bold text-foreground tabular-nums">
-                  Rs. {(Number(form.watch('initialQuantity') || 0) * Number(form.watch('purchaseRate') || 0)).toFixed(2)}
-                  {hasPack && batchUnitMode === 'pack' && Number(packQtyInput) > 0 && (
-                    <span className="text-[10px] font-normal text-muted-foreground ml-1.5">
-                      ({packQtyInput} {pUnit}{Number(packQtyInput) === 1 ? '' : 's'} × Rs. {packRateInput || 0})
-                    </span>
-                  )}
-                </span>
-              </div>
-            )}
+            {(() => {
+              const initQty = Number(form.watch('initialQuantity') || 0);
+              const pRate = Number(form.watch('purchaseRate') || 0);
+              const isPackMode = hasPack && batchUnitMode === 'pack' && Number(packQtyInput) > 0 && Number(packRateInput) > 0;
+              const totalCost = isPackMode
+                ? safeCurrency(safeMul(Number(packQtyInput), Number(packRateInput)))
+                : safeCurrency(safeMul(initQty, pRate));
+
+              if ((initQty <= 0 && (!isPackMode || Number(packQtyInput) <= 0)) || (totalCost <= 0 && pRate <= 0)) {
+                return null;
+              }
+
+              return (
+                <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-muted/30 border text-xs">
+                  <span className="text-muted-foreground">Batch Total Cost:</span>
+                  <span className="font-bold text-foreground tabular-nums">
+                    Rs. {formatMoney(totalCost)}
+                    {hasPack && batchUnitMode === 'pack' && Number(packQtyInput) > 0 && (
+                      <span className="text-[10px] font-normal text-muted-foreground ml-1.5">
+                        ({formatQtyDisplay(packQtyInput)} {pUnit}{Number(packQtyInput) === 1 ? '' : 's'} × Rs. {formatMoney(packRateInput || 0)})
+                      </span>
+                    )}
+                  </span>
+                </div>
+              );
+            })()}
 
             <FormField
               control={form.control}

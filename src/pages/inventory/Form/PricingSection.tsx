@@ -5,6 +5,7 @@ import { CheckCircle2, TrendingUp, TrendingDown, Lock } from 'lucide-react';
 import { SectionProps } from './types';
 import { useWatch } from 'react-hook-form';
 import { cn } from '@/lib/utils';
+import { formatMoney } from '@/utils/unitUtils';
 
 interface PricingSectionProps extends SectionProps {
   hasExpiry: boolean;
@@ -80,7 +81,7 @@ export const PricingSection = React.memo(({
             {averagePurchaseRate > 0 && (
               <div className="flex items-center justify-between bg-muted/50 rounded-2xl px-4 py-3 text-sm border border-muted/60">
                 <span className="text-muted-foreground text-xs">Avg. purchase cost (from batches)</span>
-                <span className="font-bold">Rs. {averagePurchaseRate.toFixed(2)}</span>
+                <span className="font-bold">Rs. {formatMoney(averagePurchaseRate)}</span>
               </div>
             )}
           </div>
@@ -99,7 +100,7 @@ export const PricingSection = React.memo(({
                     <Input
                       type="number" step="0.01" min={0} placeholder="0.00"
                       {...field}
-                      value={field.value === 0 ? '' : Number(field.value).toFixed(hasSupplier ? 2 : undefined)}
+                      value={field.value === 0 ? '' : (hasSupplier ? formatMoney(field.value) : field.value)}
                       onChange={e => field.onChange(e.target.value === '' ? 0 : Number(e.target.value))}
                       readOnly={isPurchaseLocked}
                       disabled={isPurchaseLocked}
@@ -177,7 +178,7 @@ export const PricingSection = React.memo(({
           </div>
           <div className="text-right leading-tight">
             <span className={cn('text-base font-bold tabular-nums', isProfit ? 'text-green-700' : 'text-red-600')}>
-              {isProfit ? '+' : ''}{profitPerUnit.toFixed(2)}
+              {isProfit ? '+' : ''}{formatMoney(profitPerUnit)}
             </span>
             {effectivePurchase > 0 && (
               <span className="text-xs text-muted-foreground ml-1.5">({profitMargin}%)</span>

@@ -31,7 +31,7 @@ import { SupplierFormDialog } from '@/components/SupplierFormDialog';
 import { generateBatchNumber, generateSupplierInvoiceNumber } from '@/utils/numbering';
 import { isProductPurchasable } from '@/lib/productCapabilities';
 import { cn } from '@/lib/utils';
-import { safeCurrency, safeQty, computePerUnitCost, getSafePackSize } from '@/utils/unitUtils';
+import { safeCurrency, safeQty, computePerUnitCost, getSafePackSize, safeMul, safeDiv, formatMoney, formatQtyDisplay } from '@/utils/unitUtils';
 
 type DraftItem = PurchaseItem & {
   initialPurchaseRate?: number | null;
@@ -121,10 +121,10 @@ export default function PurchaseForm() {
     const generated = generateSupplierInvoiceNumber(purchases, selectedSupplier?.name, purchaseDate);
     setInvoiceNumber(generated);
   }, [isNew, supplierId, purchaseDate, purchases, selectedSupplier?.name]);
-  const subtotal = useMemo(() => items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0), [items]);
+  const subtotal = useMemo(() => safeCurrency(items.reduce((sum, item) => sum + Number(item.subtotal || 0), 0)), [items]);
   const discountValue = Math.max(0, Number(discount) || 0);
   const taxValue = Math.max(0, Number(tax) || 0);
-  const grandTotal = Math.max(0, subtotal - discountValue + taxValue);
+  const grandTotal = safeCurrency(Math.max(0, subtotal - discountValue + taxValue));
 
   // Product picker items for ProductSearchPicker — filter out already-added products
   const addedProductIds = useMemo(() => new Set(items.map(i => i.productId)), [items]);
@@ -186,18 +186,18 @@ export default function PurchaseForm() {
         ? supplierStockEntry.packCost
         : (product.packPurchaseCost && product.packPurchaseCost > 0
             ? product.packPurchaseCost
-            : (initialRate > 0 ? safeCurrency(initialRate * safePackSize) : null));
+            : (initialRate > 0 ? safeCurrency(safeMul(initialRate, safePackSize)) : null));
 
       if (initialPackCost && initialPackCost > 0 && initialRate <= 0) {
         effectiveRate = computePerUnitCost(initialPackCost, safePackSize);
       }
       initialPackQty = 1;
-      initialQuantity = safeQty(1 * safePackSize);
+      initialQuantity = safeQty(safeMul(1, safePackSize));
     }
 
     const itemSubtotal = hasPack && initialPackCost && initialPackCost > 0
-      ? safeCurrency(initialPackCost * (initialPackQty || 1))
-      : safeCurrency(initialQuantity * effectiveRate);
+      ? safeCurrency(safeMul(initialPackCost, (initialPackQty || 1)))
+      : safeCurrency(safeMul(initialQuantity, effectiveRate));
 
     const defaultExpiryMonths = product.hasExpiry ? 12 : null;
     const defaultManufacturingDate = product.hasExpiry ? today() : null;
@@ -240,29 +240,29 @@ export default function PurchaseForm() {
       if (field === 'packQuantity') {
         const packQty = Math.max(0, Number(value) || 0);
         next.packQuantity = packQty;
-        next.quantity = safeQty(packQty * safePackSize);
+        next.quantity = safeQty(safeMul(packQty, safePackSize));
         const pCost = Number(next.packCost || 0);
-        next.subtotal = safeCurrency(packQty * pCost);
+        next.subtotal = safeCurrency(safeMul(packQty, pCost));
       } else if (field === 'packCost') {
         const pCost = Math.max(0, Number(value) || 0);
         next.packCost = pCost;
         next.purchaseRate = computePerUnitCost(pCost, safePackSize);
-        const pQty = Number(next.packQuantity ?? (next.quantity / safePackSize));
-        next.subtotal = safeCurrency(pQty * pCost);
+        const pQty = Number(next.packQuantity ?? safeDiv(next.quantity, safePackSize, 3));
+        next.subtotal = safeCurrency(safeMul(pQty, pCost));
       } else if (field === 'quantity') {
         const qty = Math.max(0, Number(value) || 0);
         next.quantity = qty;
         if (next.packSize && next.packSize > 0) {
-          next.packQuantity = safeQty(qty / safePackSize);
+          next.packQuantity = safeQty(safeDiv(qty, safePackSize, 3));
         }
-        next.subtotal = safeCurrency(qty * Math.max(0, Number(next.purchaseRate) || 0));
+        next.subtotal = safeCurrency(safeMul(qty, Math.max(0, Number(next.purchaseRate) || 0)));
       } else if (field === 'purchaseRate') {
         const rate = Math.max(0, Number(value) || 0);
         next.purchaseRate = rate;
         if (next.packSize && next.packSize > 0) {
-          next.packCost = safeCurrency(rate * safePackSize);
+          next.packCost = safeCurrency(safeMul(rate, safePackSize));
         }
-        next.subtotal = safeCurrency(Math.max(0, Number(next.quantity) || 0) * rate);
+        next.subtotal = safeCurrency(safeMul(Math.max(0, Number(next.quantity) || 0), rate));
       } else if (field === 'entryMode') {
         next.entryMode = value as 'pack' | 'base';
       }
@@ -630,7 +630,7 @@ export default function PurchaseForm() {
                                   <div className="flex items-center justify-between">
                                     <span className="capitalize">Cost / {product.packUnit || 'pack'}</span>
                                     <span className="text-[10px] text-muted-foreground font-normal tabular-nums">
-                                      Rs. {Number(item.purchaseRate || 0).toFixed(2)}/{product.unit}
+                                      Rs. {formatMoney(item.purchaseRate)}/{product.unit}
                                     </span>
                                   </div>
                                   <Input
@@ -649,7 +649,7 @@ export default function PurchaseForm() {
                                   <div className="flex items-center justify-between">
                                     <span className="capitalize">Qty ({product.unit})</span>
                                     <span className="text-[10px] text-muted-foreground font-normal tabular-nums">
-                                      = {item.packQuantity ?? ((item.quantity || 0) / product.packSize).toFixed(1)} {product.packUnit || 'pack'}s
+                                      = {formatQtyDisplay(item.packQuantity ?? safeDiv(item.quantity || 0, product.packSize, 2))} {product.packUnit || 'pack'}s
                                     </span>
                                   </div>
                                   <Input
@@ -664,7 +664,7 @@ export default function PurchaseForm() {
                                   <div className="flex items-center justify-between">
                                     <span>Unit cost</span>
                                     <span className="text-[10px] text-muted-foreground font-normal tabular-nums">
-                                      Rs. {Number(item.packCost || (Number(item.purchaseRate || 0) * product.packSize)).toFixed(2)}/{product.packUnit || 'pack'}
+                                      Rs. {formatMoney(item.packCost || safeMul(item.purchaseRate, product.packSize))}/{product.packUnit || 'pack'}
                                     </span>
                                   </div>
                                   <Input

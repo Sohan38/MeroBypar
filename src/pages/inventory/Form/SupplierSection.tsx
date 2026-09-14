@@ -18,6 +18,9 @@ import {
   getSafePackSize,
   safeCurrency,
   safeQty,
+  safeMul,
+  safeDiv,
+  formatMoney,
   computePerUnitCost
 } from '@/utils/unitUtils';
 
@@ -306,10 +309,10 @@ const SupplierStockCard = React.memo(({
                 <Sparkles className="h-3.5 w-3.5 text-primary" /> Auto-Calculated:
               </span>
               <span className="font-semibold text-foreground tabular-nums">
-                {safeQty(parsedPacks * safePackSize)} {baseUnit} @ Rs. {safePackSize > 0 ? safeCurrency(parsedPackCost / safePackSize).toFixed(2) : '0.00'} / {baseUnit}
+                {safeQty(safeMul(parsedPacks, safePackSize))} {baseUnit} @ Rs. {safePackSize > 0 ? formatMoney(safeDiv(parsedPackCost, safePackSize, 2)) : '0.00'} / {baseUnit}
                 {parsedPacks > 0 && parsedPackCost > 0 && (
                   <span className="text-[10px] text-muted-foreground font-normal ml-1.5">
-                    (Total Rs. {safeCurrency(parsedPacks * parsedPackCost).toFixed(2)})
+                    (Total Rs. {formatMoney(safeMul(parsedPacks, parsedPackCost))})
                   </span>
                 )}
               </span>
@@ -719,7 +722,7 @@ export const SupplierSection = React.memo(({ form, isNew, suppliers, existingPur
                 <span className="font-bold text-foreground tabular-nums">
                   {hasPackPricing ? `${totalPacks} ${packUnit}(s) · ` : ''}{totalStockPieces} {baseUnit}
                   <span className="text-[11px] font-normal text-muted-foreground ml-1.5">
-                    (Avg: Rs. {weightedCost.toFixed(2)} / {baseUnit})
+                    (Avg: Rs. {formatMoney(weightedCost)} / {baseUnit})
                   </span>
                 </span>
               </div>

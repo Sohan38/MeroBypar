@@ -202,6 +202,58 @@ export function safeQty(val: number): number {
 }
 
 /**
+ * Multiplies two numbers safely, mitigating IEEE-754 floating point drift.
+ * Rounds to intermediate precision (default 6 decimals) to prevent rounding cascades.
+ */
+export function safeMul(a: number | string | null | undefined, b: number | string | null | undefined, decimals: number = 6): number {
+  const numA = Number(a) || 0;
+  const numB = Number(b) || 0;
+  if (!isFinite(numA) || !isFinite(numB)) return 0;
+  const factor = Math.pow(10, decimals);
+  return Math.round((numA * numB) * factor) / factor;
+}
+
+/**
+ * Divides two numbers safely with division-by-zero safeguard and controlled precision.
+ */
+export function safeDiv(a: number | string | null | undefined, b: number | string | null | undefined, decimals: number = 6): number {
+  const numA = Number(a) || 0;
+  const numB = Number(b) || 0;
+  if (!isFinite(numA) || !isFinite(numB) || Math.abs(numB) < 1e-9) return 0;
+  const factor = Math.pow(10, decimals);
+  return Math.round((numA / numB) * factor) / factor;
+}
+
+/**
+ * Safely formats currency to 2 decimal places with clean string output.
+ * If null/undefined/NaN, returns "0.00".
+ */
+export function formatMoney(val: number | string | null | undefined): string {
+  if (val === null || val === undefined || val === '') return '0.00';
+  const num = typeof val === 'string' ? parseFloat(val) : Number(val);
+  if (isNaN(num) || !isFinite(num)) return '0.00';
+  const rounded = Math.round(num * 100) / 100;
+  const abs = Math.abs(rounded) < 0.00001 ? 0 : rounded;
+  return abs.toFixed(2);
+}
+
+/**
+ * Formats a quantity value cleanly for display:
+ * - Omits trailing decimal zeros for integers (e.g. 5 -> "5", 5.00 -> "5")
+ * - Retains necessary decimals up to maxDecimals (e.g. 5.5 -> "5.5", 5.25 -> "5.25")
+ */
+export function formatQtyDisplay(val: number | string | null | undefined, maxDecimals: number = 3): string {
+  if (val === null || val === undefined || val === '') return '0';
+  const num = typeof val === 'string' ? parseFloat(val) : Number(val);
+  if (isNaN(num) || !isFinite(num)) return '0';
+  const rounded = safeQty(num);
+  if (Math.abs(rounded - Math.round(rounded)) < 1e-6) {
+    return Math.round(rounded).toString();
+  }
+  return rounded.toFixed(maxDecimals).replace(/\.?0+$/, '');
+}
+
+/**
  * Ensures division-by-zero safeguard when calculating pack numbers.
  */
 export function getSafePackSize(packSize?: number | null): number {

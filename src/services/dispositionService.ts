@@ -13,6 +13,7 @@ import {
     DispositionSettlementStatus,
     PaymentMethod,
 } from '@/types';
+import { safeCurrency, safeQty, safeMul } from '@/utils/unitUtils';
 
 export type CreateInventoryDispositionInput = {
     referenceNumber?: string | null;
@@ -109,10 +110,10 @@ function buildDispositionRecord(
         purchaseInvoiceNumber: overrides.purchaseInvoiceNumber ?? null,
         supplierId: input.supplierId ?? overrides.supplierId ?? null,
         supplierName: overrides.supplierName ?? null,
-        quantity,
-        unitCost,
-        totalValue: Number((quantity * unitCost).toFixed(2)),
-        settlementAmount: Number(input.settlementAmount ?? overrides.settlementAmount ?? 0),
+        quantity: safeQty(quantity),
+        unitCost: safeCurrency(unitCost),
+        totalValue: safeCurrency(safeMul(quantity, unitCost)),
+        settlementAmount: safeCurrency(Number(input.settlementAmount ?? overrides.settlementAmount ?? 0)),
         settlementMethod: input.settlementMethod ?? overrides.settlementMethod ?? null,
         settlementType: overrides.settlementType ?? 'none',
         settlementStatus: input.settlementStatus ?? overrides.settlementStatus ?? null,
@@ -258,9 +259,9 @@ export async function createInventoryDisposition(
                     {
                         productId: product.id,
                         productName: product.name,
-                        quantity,
-                        purchaseRate: Number(input.replacementDetails.purchaseRate ?? unitCost),
-                        subtotal: quantity * Number(input.replacementDetails.purchaseRate ?? unitCost),
+                        quantity: safeQty(quantity),
+                        purchaseRate: safeCurrency(Number(input.replacementDetails.purchaseRate ?? unitCost)),
+                        subtotal: safeCurrency(safeMul(quantity, Number(input.replacementDetails.purchaseRate ?? unitCost))),
                         batchId: undefined,
                         batchNumber: input.replacementDetails.batchNumber ?? undefined,
                         manufacturingDate: input.replacementDetails.manufacturingDate ?? undefined,

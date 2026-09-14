@@ -4,7 +4,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { SectionProps } from './types';
 import { useWatch } from 'react-hook-form';
-import { computePerUnitCost, calculateTotalSupplierStock, calculateWeightedAverageCost, getSafePackSize, safeCurrency, safeQty } from '@/utils/unitUtils';
+import { computePerUnitCost, calculateTotalSupplierStock, calculateWeightedAverageCost, getSafePackSize, safeCurrency, safeQty, safeMul, safeDiv, formatMoney, formatQtyDisplay } from '@/utils/unitUtils';
 import { cn } from '@/lib/utils';
 import {
   PackageCheck,
@@ -325,9 +325,9 @@ export const PackPricingSection = React.memo(({
               const isBatchAutoAveraged = hasExpiry && averagePurchaseRate > 0;
               const isCostLocked = isMultiSupplier || isBatchAutoAveraged;
               const displayCost = isBatchAutoAveraged
-                ? (safePSize > 0 ? (averagePurchaseRate * safePSize).toFixed(2) : '')
+                ? (safePSize > 0 ? formatMoney(safeMul(averagePurchaseRate, safePSize)) : '')
                 : (isMultiSupplier
-                    ? (multiSupplierAveragePackCost > 0 ? multiSupplierAveragePackCost.toFixed(2) : (field.value ?? ''))
+                    ? (multiSupplierAveragePackCost > 0 ? formatMoney(multiSupplierAveragePackCost) : (field.value ?? ''))
                     : (field.value ?? ''));
 
               return (
@@ -371,7 +371,7 @@ export const PackPricingSection = React.memo(({
                     </p>
                   ) : isBatchAutoAveraged ? (
                     <p className="text-[10px] text-muted-foreground">
-                      Auto-averaged from batch purchase rates (Rs. {averagePurchaseRate.toFixed(2)} × {safePSize}).
+                      Auto-averaged from batch purchase rates (Rs. {formatMoney(averagePurchaseRate)} × {safePSize}).
                     </p>
                   ) : (
                     <FormMessage className="text-xs" />
@@ -494,13 +494,13 @@ export const PackPricingSection = React.memo(({
                 <div>
                   <span className="text-[10px] text-muted-foreground block uppercase font-medium">Avg. Cost / {packUnit || 'Carton'}</span>
                   <span className="text-sm font-bold text-foreground">
-                    {multiSupplierAveragePackCost > 0 ? `Rs. ${multiSupplierAveragePackCost.toFixed(2)}` : 'Rs. 0.00'}
+                    {multiSupplierAveragePackCost > 0 ? `Rs. ${formatMoney(multiSupplierAveragePackCost)}` : 'Rs. 0.00'}
                   </span>
                 </div>
                 <div>
                   <span className="text-[10px] text-muted-foreground block uppercase font-medium">Total Sourced Packs</span>
                   <span className="text-sm font-bold text-foreground">
-                    {safePSize > 0 ? (multiSupplierTotalStock / safePSize).toFixed(1) : 0} {packUnit || 'pack'}s
+                    {safePSize > 0 ? formatQtyDisplay(safeDiv(multiSupplierTotalStock, safePSize, 1)) : 0} {packUnit || 'pack'}s
                   </span>
                 </div>
               </div>

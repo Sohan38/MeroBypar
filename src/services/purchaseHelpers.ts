@@ -2,6 +2,7 @@ import { IStorageProvider } from '@/storage/IStorageProvider';
 import { createPurchase } from './purchaseService';
 import { generateSupplierInvoiceNumber } from '@/utils/numbering';
 import { Product } from '@/types';
+import { safeCurrency, safeMul, safeQty } from '@/utils/unitUtils';
 
 export type CreatePurchaseForStockOpts = {
     productId: string;
@@ -39,7 +40,7 @@ export async function createPurchaseForStockIncrease(storage: IStorageProvider, 
     const dateIso = opts.date ? (opts.date instanceof Date ? opts.date.toISOString() : new Date(opts.date).toISOString()) : new Date().toISOString();
 
     const rate = Number(opts.purchaseRate ?? product?.purchaseRate ?? 0) || 0;
-    const subtotal = qty * rate;
+    const subtotal = safeCurrency(safeMul(qty, rate));
 
     const item = {
         productId: opts.productId,
@@ -119,7 +120,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
         const invoiceNumber = (opts.invoiceNumber || '').trim() || undefined;
         const dateIso = opts.date ? (opts.date instanceof Date ? opts.date.toISOString() : new Date(opts.date).toISOString()) : new Date().toISOString();
         const rate = Number(opts.purchaseRate ?? product?.purchaseRate ?? 0) || 0;
-        const subtotal = qty * rate;
+        const subtotal = safeCurrency(safeMul(qty, rate));
 
         const item = {
             productId: opts.productId,

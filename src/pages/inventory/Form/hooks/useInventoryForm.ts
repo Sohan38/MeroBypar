@@ -17,7 +17,9 @@ import {
     calculateWeightedAverageCost,
     getSafePackSize,
     safeCurrency,
-    safeQty
+    safeQty,
+    safeMul,
+    safeDiv,
 } from '@/utils/unitUtils';
 
 
@@ -408,10 +410,10 @@ export function useInventoryForm(
             const totalPacks = Math.floor(totalQty / pSize);
             form.setValue('packQuantity', totalPacks, { shouldDirty: true });
 
-            const totalCost = batches.reduce((s, b) => s + (Number(b.quantity || 0) * Number(b.purchaseRate || 0)), 0);
+            const totalCost = batches.reduce((s, b) => safeCurrency(s + safeMul(Number(b.quantity || 0), Number(b.purchaseRate || 0))), 0);
             if (totalQty > 0) {
-                const avgRate = totalCost / totalQty;
-                form.setValue('packPurchaseCost', Math.round(avgRate * pSize * 100) / 100, { shouldDirty: true });
+                const avgRate = safeDiv(totalCost, totalQty, 6);
+                form.setValue('packPurchaseCost', safeCurrency(safeMul(avgRate, pSize)), { shouldDirty: true });
             }
         }
     }, [form]);
@@ -483,17 +485,17 @@ export function useInventoryForm(
             const normalizedSupplierStocks = resolvedSupplierStocks.map((ss: any, idx: number) => {
                 const baseStock = isMultiSup ? Number(ss.baseQuantity ?? ss.stock ?? 0) : calculatedStock;
                 const unitCost = Number(ss.cost || effectivePurchaseRate || 0);
-                const totalCost = Number(ss.totalPurchaseCost ?? safeCurrency(baseStock * unitCost));
+                const totalCost = Number(ss.totalPurchaseCost ?? safeCurrency(safeMul(baseStock, unitCost)));
                 const isPrimary = ss.isPrimary ?? (idx === 0);
 
                 return {
                     ...ss,
-                    stock: baseStock,
-                    baseQuantity: baseStock,
-                    cost: unitCost,
-                    totalPurchaseCost: totalCost,
-                    packQuantity: ss.packQuantity ?? (data.packSize ? safeQty(baseStock / safeSize) : null),
-                    packCost: ss.packCost ?? (data.packSize ? safeCurrency(unitCost * safeSize) : null),
+                    stock: safeQty(baseStock),
+                    baseQuantity: safeQty(baseStock),
+                    cost: safeCurrency(unitCost),
+                    totalPurchaseCost: safeCurrency(totalCost),
+                    packQuantity: ss.packQuantity ?? (data.packSize ? safeQty(safeDiv(baseStock, safeSize, 3)) : null),
+                    packCost: ss.packCost ?? (data.packSize ? safeCurrency(safeMul(unitCost, safeSize)) : null),
                     appliedPackSize: data.packSize ? safeSize : null,
                     isPrimary,
                 };
@@ -503,7 +505,7 @@ export function useInventoryForm(
                 ? Math.floor(calculatedStock / safeSize)
                 : data.packQuantity;
             const calculatedPackCostVal = (data.hasExpiry && safeSize > 0 && effectivePurchaseRate > 0)
-                ? safeCurrency(effectivePurchaseRate * safeSize)
+                ? safeCurrency(safeMul(effectivePurchaseRate, safeSize))
                 : data.packPurchaseCost;
 
             const productData = {
@@ -526,7 +528,7 @@ export function useInventoryForm(
                 hasVariants: data.hasVariants ?? false,
                 variants: data.variants ?? [],
                 purchaseRate: (isMultiSup || data.hasExpiry) ? effectivePurchaseRate : data.purchaseRate,
-                profitPerUnit: data.sellingRate - effectivePurchaseRate,
+                profitPerUnit: safeCurrency(data.sellingRate - effectivePurchaseRate),
                 unit: data.unit as ProductUnit,
                 imageBase64: data.imageBase64 ?? '',
             };

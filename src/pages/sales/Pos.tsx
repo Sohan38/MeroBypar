@@ -24,7 +24,7 @@ import { InventoryLedgerService } from '@/services/inventoryLedgerService';
 import { useStorageProvider } from '@/storage/StorageContext';
 import { FinancialPostingService } from '@/services/financialPostingService';
 import { Haptics } from '@/services/haptics';
-import { roundQuantity, formatQuantity, isDecimalUnit, getUnitStep } from '@/utils/unitUtils';
+import { roundQuantity, formatQuantity, isDecimalUnit, getUnitStep, safeCurrency, safeMul } from '@/utils/unitUtils';
 
 interface VariantDraft {
   productId: string;
@@ -265,7 +265,7 @@ export default function SalesPos() {
         const newQty = roundQuantity(Math.min(sellableQuantity, existing.quantity + delta), product.unit);
         return cur.map(i =>
           i.productId === product.id
-            ? { ...i, quantity: newQty, subtotal: Math.round(newQty * i.sellingRate * 100) / 100 }
+            ? { ...i, quantity: newQty, subtotal: safeCurrency(safeMul(newQty, i.sellingRate)) }
             : i
         );
       }
@@ -280,7 +280,7 @@ export default function SalesPos() {
         packUnit: product.packUnit,
         sellingRate: product.sellingRate,
         maxQuantity: sellableQuantity,
-        subtotal: Math.round(initialQty * product.sellingRate * 100) / 100,
+        subtotal: safeCurrency(safeMul(initialQty, product.sellingRate)),
       }];
     });
 
@@ -321,7 +321,7 @@ export default function SalesPos() {
       packUnit: product.packUnit,
       sellingRate: product.sellingRate,
       maxQuantity: maxAllowed,
-      subtotal: Math.round(quantity * product.sellingRate * 100) / 100,
+      subtotal: safeCurrency(safeMul(quantity, product.sellingRate)),
     };
 
     setCart(prev => {
@@ -352,7 +352,7 @@ export default function SalesPos() {
         toast.error(`Only ${formatQuantity(item.maxQuantity, item.unit)} in stock`);
         return item;
       }
-      return { ...item, quantity: newQ, subtotal: Math.round(newQ * item.sellingRate * 100) / 100 };
+      return { ...item, quantity: newQ, subtotal: safeCurrency(safeMul(newQ, item.sellingRate)) };
     }));
   };
 
@@ -366,29 +366,29 @@ export default function SalesPos() {
         return {
           ...item,
           quantity: item.maxQuantity,
-          subtotal: Math.round(item.maxQuantity * item.sellingRate * 100) / 100,
+          subtotal: safeCurrency(safeMul(item.maxQuantity, item.sellingRate)),
         };
       }
       return {
         ...item,
         quantity: cleanQty,
-        subtotal: Math.round(cleanQty * item.sellingRate * 100) / 100,
+        subtotal: safeCurrency(safeMul(cleanQty, item.sellingRate)),
       };
     }));
   };
 
   const removeFromCart = (lineKey: string) => setCart(cur => cur.filter(i => cartLineKey(i) !== lineKey));
 
-  const subtotal = cart.reduce((s, i) => s + i.subtotal, 0);
+  const subtotal = safeCurrency(cart.reduce((s, i) => s + i.subtotal, 0));
   const discount = useMemo(() => {
     if (discountType === 'percent') {
-      return Math.round(subtotal * (discountValue / 100) * 100) / 100;
+      return safeCurrency(safeMul(subtotal, discountValue / 100));
     }
-    return discountValue;
+    return safeCurrency(discountValue);
   }, [discountType, discountValue, subtotal]);
-  const taxAmount = Math.round((subtotal - discount) * (taxPercent / 100) * 100) / 100;
-  const grandTotal = Math.max(0, subtotal - discount + taxAmount);
-  const change = paidAmount !== '' && Number(paidAmount) > grandTotal ? Number(paidAmount) - grandTotal : 0;
+  const taxAmount = safeCurrency(safeMul(Math.max(0, subtotal - discount), taxPercent / 100));
+  const grandTotal = safeCurrency(Math.max(0, subtotal - discount + taxAmount));
+  const change = paidAmount !== '' && Number(paidAmount) > grandTotal ? safeCurrency(Number(paidAmount) - grandTotal) : 0;
   const selectedCustomer = customerId ? customerMap.get(customerId) : undefined;
   const cartCount = cart.reduce((s, i) => s + i.quantity, 0);
   const cartDisplayCount = cartCount + (variantDrafts.length > 0 ? variantDrafts.length : 0);
@@ -495,7 +495,7 @@ export default function SalesPos() {
       toast.error(`Paid amount (${format(Number(paidAmount))}) is less than total (${format(grandTotal)})`);
       return;
     }
-    const dueAmount = Math.max(0, grandTotal - paidNow);
+    const dueAmount = safeCurrency(Math.max(0, grandTotal - paidNow));
     if (paymentMethod === 'credit' && dueAmount <= 0) {
       toast.error('Credit must have an unpaid balance');
       return;
