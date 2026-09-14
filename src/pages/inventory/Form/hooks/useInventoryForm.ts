@@ -376,15 +376,12 @@ export function useInventoryForm(
             form.setValue('hasExpiry', true, { shouldValidate: true, shouldDirty: true });
             // Do NOT auto-create a phantom batch without expiry date or supplier!
         } else {
+            form.setValue('hasExpiry', false, { shouldValidate: true, shouldDirty: true });
             if (localBatches.length > 0) {
-                if (window.confirm('Are you sure you want to turn off expiry tracking? This will merge all batch stock into standard stock.')) {
-                    form.setValue('hasExpiry', false, { shouldValidate: true, shouldDirty: true });
-                    form.setValue('purchaseRate', averagePurchaseRate, { shouldValidate: true, shouldDirty: true });
-                    form.setValue('quantity', totalBatchQuantity, { shouldValidate: true, shouldDirty: true });
-                    setLocalBatches([]);
-                }
+                form.setValue('purchaseRate', averagePurchaseRate, { shouldValidate: true, shouldDirty: true });
+                form.setValue('quantity', totalBatchQuantity, { shouldValidate: true, shouldDirty: true });
+                setLocalBatches([]);
             } else {
-                form.setValue('hasExpiry', false, { shouldValidate: true, shouldDirty: true });
                 // Revert to pre-batch stock/rates if available
                 if (preBatchStockRef.current.quantity > 0) {
                     form.setValue('quantity', preBatchStockRef.current.quantity, { shouldValidate: true, shouldDirty: true });

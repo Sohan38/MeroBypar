@@ -7,6 +7,7 @@ import { FlaskConical, Info, Plus, Pencil, Trash2, Boxes } from 'lucide-react';
 import { SectionProps } from './types';
 import { ProductBatch } from '@/types';
 import { ExpiryBadge, getBatchStatus } from '@/components/BatchFormDialog';
+import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { Input } from '@/components/ui/input';
 import { cn } from '@/lib/utils';
 import { formatMoney, safeMul, safeQty } from '@/utils/unitUtils';
@@ -51,6 +52,28 @@ export const BatchSection = React.memo(({
   const totalBatchQuantity = sortedBatches.reduce((s, b) => s + (Number(b.quantity) || 0), 0);
   const totalBatchPacks = hasPack && safePSize > 0 ? Math.floor(totalBatchQuantity / safePSize) : 0;
 
+  const [showConfirmDisable, setShowConfirmDisable] = React.useState(false);
+
+  const handleToggleClick = (currentVal: boolean, onChange: (val: boolean) => void) => {
+    if (currentVal) {
+      if (localBatches.length > 0) {
+        setShowConfirmDisable(true);
+        return;
+      }
+      onChange(false);
+      onToggleExpiry(false);
+    } else {
+      onChange(true);
+      onToggleExpiry(true);
+    }
+  };
+
+  const handleConfirmDisable = () => {
+    setShowConfirmDisable(false);
+    form.setValue('hasExpiry', false, { shouldValidate: true, shouldDirty: true });
+    onToggleExpiry(false);
+  };
+
   return (
     <section className="px-4 py-4 space-y-4">
       {/* Toggle card */}
@@ -60,11 +83,7 @@ export const BatchSection = React.memo(({
             ? 'border-primary/30 bg-primary/5'
             : 'border-border bg-muted/20'
             }`}
-          onClick={() => {
-            const next = !field.value;
-            field.onChange(next);
-            onToggleExpiry(next);
-          }}
+          onClick={() => handleToggleClick(Boolean(field.value), field.onChange)}
         >
           <div className="flex items-center gap-3 min-w-0">
             <div className={`p-2 rounded-xl shrink-0 transition-colors ${hasExpiry ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground'}`}>
@@ -79,7 +98,7 @@ export const BatchSection = React.memo(({
           </div>
           <Switch
             checked={field.value ?? false}
-            onCheckedChange={(checked) => { field.onChange(checked); onToggleExpiry(checked); }}
+            onCheckedChange={() => handleToggleClick(Boolean(field.value), field.onChange)}
             className="shrink-0 pointer-events-none"
           />
         </div>
@@ -204,6 +223,15 @@ export const BatchSection = React.memo(({
           </div>
         </>
       )}
+      <ConfirmDialog
+        isOpen={showConfirmDisable}
+        onClose={() => setShowConfirmDisable(false)}
+        onConfirm={handleConfirmDisable}
+        title="Turn off Expiry & Batch Tracking?"
+        description="This will merge all batch stock into standard stock and remove individual batch records. Are you sure you want to proceed?"
+        confirmText="Turn Off & Merge"
+        cancelText="Keep Batches"
+      />
     </section>
   );
 });
