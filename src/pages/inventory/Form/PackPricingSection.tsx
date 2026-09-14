@@ -57,8 +57,10 @@ export const PackPricingSection = React.memo(({
     ? computePerUnitCost(Number(packPurchaseCost), Number(packSize), 2)
     : null;
 
+  const parsedPackQty = Number(packQuantity) || 0;
+
   const computedTotalStock = (packSize && Number(packSize) > 0)
-    ? Math.round(((packQuantity ? Number(packQuantity) : 1) * Number(packSize)) * 1000) / 1000
+    ? safeQty(safeMul(parsedPackQty, Number(packSize)))
     : null;
 
   const watchedSupplierStocks = useWatch({ control: form.control, name: 'supplierStocks' }) ?? [];
@@ -123,35 +125,40 @@ export const PackPricingSection = React.memo(({
   }, [hasExpiry, averagePurchaseRate, safePSize, form]);
 
   // Sync computed pack unit cost & stock quantity to form & all suppliers
+  // Sync computed pack unit cost & stock quantity to form & all suppliers
   const handlePackCalculationSync = (
     sizeVal: number | null,
     costVal: number | null,
-    qtyVal: number | null
+    qtyVal: number | null,
+    source?: 'packSize' | 'packCost' | 'packQty'
   ) => {
     if (sizeVal && sizeVal > 0) {
-      // If costVal is not given yet, but purchaseRate already exists (> 0), derive costVal
       let effectiveCostVal = costVal;
-      const curPurchaseRate = Number(form.getValues('purchaseRate') ?? 0);
-      if ((effectiveCostVal === null || effectiveCostVal <= 0) && curPurchaseRate > 0) {
-        effectiveCostVal = safeCurrency(curPurchaseRate * sizeVal);
-        form.setValue('packPurchaseCost', effectiveCostVal, { shouldDirty: true });
+      // ONLY derive costVal from purchaseRate when packSize changes and costVal wasn't provided
+      if (source === 'packSize') {
+        const curPurchaseRate = Number(form.getValues('purchaseRate') ?? 0);
+        if ((effectiveCostVal === null || effectiveCostVal <= 0) && curPurchaseRate > 0) {
+          effectiveCostVal = safeCurrency(safeMul(curPurchaseRate, sizeVal));
+          form.setValue('packPurchaseCost', effectiveCostVal, { shouldDirty: true });
+        }
       }
 
       if (hasExpiry) {
         // In expiry mode, stock and rate are driven by batches
-        if (effectiveCostVal !== null && effectiveCostVal > 0) {
+        if (effectiveCostVal !== null && effectiveCostVal > 0 && source !== 'packCost') {
           form.setValue('packPurchaseCost', effectiveCostVal, { shouldDirty: true });
         }
         return;
       }
 
-      const perUnit = (effectiveCostVal !== null && effectiveCostVal >= 0)
+      const curPurchaseRate = Number(form.getValues('purchaseRate') ?? 0);
+      const perUnit = (effectiveCostVal !== null && effectiveCostVal > 0)
         ? computePerUnitCost(effectiveCostVal, sizeVal, 2)
-        : curPurchaseRate;
-      const packs = (qtyVal && qtyVal > 0) ? qtyVal : 1;
-      const totalUnits = Math.round(packs * sizeVal * 1000) / 1000;
+        : (source === 'packCost' ? 0 : curPurchaseRate);
+      const packs = (qtyVal !== null && qtyVal !== undefined && qtyVal >= 0) ? qtyVal : 1;
+      const totalUnits = safeQty(safeMul(packs, sizeVal));
 
-      if (effectiveCostVal !== null && effectiveCostVal >= 0 && isNew) {
+      if (isNew) {
         form.setValue('purchaseRate', perUnit, { shouldValidate: true, shouldDirty: true });
       }
 
@@ -211,14 +218,15 @@ export const PackPricingSection = React.memo(({
       if (!form.getValues('packUnit')) {
         form.setValue('packUnit', 'pack', { shouldDirty: true });
       }
-      if (!hasExpiry && !form.getValues('packQuantity')) {
-        form.setValue('packQuantity', 1, { shouldDirty: true });
+      if (!hasExpiry && (form.getValues('packQuantity') === undefined || form.getValues('packQuantity') === null)) {
+        form.setValue('packQuantity', 0, { shouldDirty: true });
       }
       // Trigger sync with current values
       const curSize = form.getValues('packSize');
       const curCost = form.getValues('packPurchaseCost');
       if (curSize) {
-        handlePackCalculationSync(Number(curSize), curCost ? Number(curCost) : null, form.getValues('packQuantity') ? Number(form.getValues('packQuantity')) : 1);
+        const curPackQty = form.getValues('packQuantity');
+        handlePackCalculationSync(Number(curSize), curCost ? Number(curCost) : null, Number(curPackQty) || 0, 'packSize');
       }
     }
   };
@@ -288,7 +296,8 @@ export const PackPricingSection = React.memo(({
                       const val = e.target.value === '' ? null : Number(e.target.value);
                       field.onChange(val);
                       const curCost = form.getValues('packPurchaseCost');
-                      handlePackCalculationSync(val, curCost ? Number(curCost) : null, packQuantity ? Number(packQuantity) : 1);
+                      const curQty = form.getValues('packQuantity');
+                      handlePackCalculationSync(val, curCost ? Number(curCost) : null, Number(curQty) || 0, 'packSize');
                     }}
                     className="h-9 text-xs"
                   />
@@ -351,7 +360,8 @@ export const PackPricingSection = React.memo(({
                           if (isCostLocked) return;
                           const val = e.target.value === '' ? null : Number(e.target.value);
                           field.onChange(val);
-                          handlePackCalculationSync(packSize ? Number(packSize) : null, val, packQuantity ? Number(packQuantity) : 1);
+                          const curQty = form.getValues('packQuantity');
+                          handlePackCalculationSync(packSize ? Number(packSize) : null, val, Number(curQty) || 0, 'packCost');
                         }}
                         readOnly={isCostLocked}
                         disabled={isCostLocked}
@@ -384,12 +394,27 @@ export const PackPricingSection = React.memo(({
             <FormField control={form.control} name="packQuantity" render={({ field }) => {
               const isPacksFromBatches = hasExpiry;
               const batchPacks = hasExpiry && safePSize > 0 ? Math.floor(totalBatchQuantity / safePSize) : 0;
+              const currentVal = isPacksFromBatches ? batchPacks : (field.value ?? '');
+              const numVal = currentVal === '' ? 0 : Number(currentVal);
+              const totalPieces = safePSize > 0 ? safeQty(safeMul(numVal, safePSize)) : 0;
 
               return (
-                <FormItem>
+                <FormItem className="space-y-1.5">
                   <FormLabel className="text-[11px] font-medium text-muted-foreground flex items-center justify-between">
-                    <span>{isMultiSupplier ? `Total ${packUnit || 'Pack'}s Pool` : isPacksFromBatches ? `Total ${packUnit || 'Pack'}s` : 'Packs in Stock'}</span>
-                    {isPacksFromBatches && <span className="text-[10px] text-primary font-normal">From Batches</span>}
+                    <span className="flex items-center gap-1.5">
+                      <Boxes className="h-3 w-3 text-primary" />
+                      <span>{isMultiSupplier ? `Total ${packUnit || 'Pack'}s Pool` : isPacksFromBatches ? `Total ${packUnit || 'Pack'}s` : 'Packs in Stock'}</span>
+                    </span>
+                    {isPacksFromBatches ? (
+                      <span className="text-[10px] text-primary font-normal">From Batches</span>
+                    ) : (
+                      <span className={cn(
+                        "text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded transition-colors",
+                        numVal > 0 ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
+                      )}>
+                        = {totalPieces} {baseUnit}
+                      </span>
+                    )}
                   </FormLabel>
                   <FormControl>
                     <div className="relative">
@@ -397,27 +422,57 @@ export const PackPricingSection = React.memo(({
                         type="number"
                         min={0}
                         step="any"
-                        placeholder="1"
+                        placeholder="0"
                         {...field}
-                        value={isPacksFromBatches ? batchPacks : (field.value ?? '')}
+                        value={currentVal}
                         onChange={e => {
                           if (isPacksFromBatches) return;
                           const val = e.target.value === '' ? null : Number(e.target.value);
                           field.onChange(val);
-                          handlePackCalculationSync(packSize ? Number(packSize) : null, packPurchaseCost ? Number(packPurchaseCost) : null, val);
+                          handlePackCalculationSync(packSize ? Number(packSize) : null, packPurchaseCost ? Number(packPurchaseCost) : null, val, 'packQty');
                         }}
                         readOnly={isPacksFromBatches}
                         disabled={isPacksFromBatches}
                         className={cn(
-                          "h-9 text-xs font-medium",
-                          isPacksFromBatches && "bg-muted/60 text-muted-foreground cursor-not-allowed pr-8"
+                          "h-9 text-xs font-semibold pl-3 pr-9 transition-colors",
+                          !isPacksFromBatches && numVal > 0 && "border-primary/50 bg-primary/[0.03] focus-visible:border-primary",
+                          isPacksFromBatches && "bg-muted/60 text-muted-foreground cursor-not-allowed"
                         )}
                       />
-                      {isPacksFromBatches && (
+                      {isPacksFromBatches ? (
                         <Lock className="absolute right-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
+                      ) : (
+                        <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] text-muted-foreground pointer-events-none uppercase font-semibold">
+                          {packUnit || 'pk'}
+                        </span>
                       )}
                     </div>
                   </FormControl>
+
+                  {!isPacksFromBatches && !isMultiSupplier && (
+                    <div className="flex items-center gap-1 pt-0.5">
+                      <span className="text-[9px] text-muted-foreground font-medium mr-0.5">Quick:</span>
+                      {[0, 1, 5, 10].map(q => (
+                        <button
+                          key={q}
+                          type="button"
+                          onClick={() => {
+                            field.onChange(q);
+                            handlePackCalculationSync(packSize ? Number(packSize) : null, packPurchaseCost ? Number(packPurchaseCost) : null, q, 'packQty');
+                          }}
+                          className={cn(
+                            "px-1.5 py-0.5 text-[10px] rounded border transition-colors",
+                            numVal === q
+                              ? "bg-primary text-primary-foreground border-primary font-semibold shadow-xs"
+                              : "bg-background text-muted-foreground hover:text-foreground border-border hover:bg-muted/50"
+                          )}
+                        >
+                          {q === 0 ? '0 (Out)' : q}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
                   {isPacksFromBatches ? (
                     <p className="text-[10px] text-muted-foreground">
                       Derived from batch stock ({totalBatchQuantity} {baseUnit}).
@@ -470,7 +525,7 @@ export const PackPricingSection = React.memo(({
                     <span className="font-bold text-foreground tabular-nums">
                       {computedTotalStock} {baseUnit}
                       <span className="text-[10px] font-normal text-muted-foreground ml-1">
-                        ({packQuantity || 1} {packUnit || 'pack'}(s) × {packSize})
+                        ({parsedPackQty} {packUnit || 'pack'}(s) × {packSize})
                       </span>
                     </span>
                   </div>
