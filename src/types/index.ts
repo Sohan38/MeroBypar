@@ -481,13 +481,17 @@ export type ExpenseCategory = 'salary' | 'electricity' | 'water' | 'internet' | 
 
 export interface Expense extends StorageRecord {
   date: string;
-  category: ExpenseCategory;
+  category: ExpenseCategory | string;
   description: string;
   amount: number;
   paymentMethod: PaymentMethod;
   notes: string;
   /** Optional link to a purchase that auto-generated this expense */
   sourcePurchaseId?: string;
+  bankAccountId?: string | null;
+  financialAccountId?: string | null;
+  splitPayments?: PaymentSplitEntry[];
+  referenceNumber?: string;
 }
 
 export interface CashBookEntry extends StorageRecord {

@@ -226,13 +226,37 @@ export class FinancialPostingService {
         id: string;
         date: string;
         amount: number;
-        paymentMethod: Exclude<PaymentMethod, 'split' | 'credit'>;
+        paymentMethod: PaymentMethod | string;
+        bankAccountId?: string | null;
+        splitPayments?: PaymentSplitEntry[];
         description: string;
         eventKey?: string;
     }) {
         await this.ensureDefaultAccounts(storage);
-        const accountId = await this.resolvePaymentAccount(storage, expense.paymentMethod);
-        if (!accountId) throw new Error(`No financial account configured for ${expense.paymentMethod}.`);
+        const movements: FinancialMovementInput[] = [];
+
+        if (expense.paymentMethod === 'split' && expense.splitPayments && expense.splitPayments.length > 0) {
+            for (const split of expense.splitPayments) {
+                const splitAmt = Number(split.amount) || 0;
+                if (splitAmt <= 0) continue;
+                const explicitId = split.method === 'bank' ? split.bankAccountId : null;
+                const accId = await this.resolvePaymentAccount(storage, split.method as any, explicitId);
+                if (!accId) throw new Error(`No financial account found for ${split.method}`);
+                movements.push({
+                    accountId: accId,
+                    amount: -Math.abs(splitAmt),
+                });
+            }
+        } else {
+            const explicitId = expense.paymentMethod === 'bank' ? expense.bankAccountId : null;
+            const accountId = await this.resolvePaymentAccount(storage, expense.paymentMethod as any, explicitId);
+            if (!accountId) throw new Error(`No financial account configured for ${expense.paymentMethod}.`);
+            movements.push({
+                accountId,
+                amount: -Math.abs(expense.amount),
+            });
+        }
+
         return this.post(storage, {
             date: expense.date,
             type: 'expense',
@@ -240,7 +264,7 @@ export class FinancialPostingService {
             sourceType: 'expense',
             sourceId: expense.id,
             idempotencyKey: expense.eventKey ?? `expense:${expense.id}:payment`,
-            movements: [{ accountId, amount: -Math.abs(expense.amount) }],
+            movements,
         });
     }
 
