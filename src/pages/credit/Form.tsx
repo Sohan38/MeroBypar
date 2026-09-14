@@ -226,8 +226,8 @@ export default function CreditForm() {
     setDueDate(formatDate(due, 'yyyy-MM-dd'));
   };
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSubmit = async (e?: React.FormEvent | React.SyntheticEvent) => {
+    e?.preventDefault?.();
     if (!customerId) {
       setCustomerError('Select a customer before saving.');
       toast.error('A customer is required');
@@ -381,22 +381,36 @@ export default function CreditForm() {
   return (
     <div className="p-4 md:p-6 space-y-5 max-w-2xl mx-auto pb-28 md:pb-8">
       {/* Header */}
-      <div className="flex items-center gap-3">
-        <Button variant="ghost" size="icon" onClick={goBack} aria-label="Back" className="rounded-full">
-          <ArrowLeft className="h-5 w-5" />
-        </Button>
-        <div>
-          <h1 className="text-xl md:text-2xl font-bold">
-            {isNew ? (isLoan ? 'Lend Money (सापटी)' : 'Add Udharo Credit') : 'Edit Credit Record'}
-          </h1>
-          <p className="text-xs md:text-sm text-muted-foreground">
-            {isNew
-              ? isLoan
-                ? 'Disburse cash or bank funds as an informal loan to a customer'
-                : 'Record manual credit for goods or services outside POS'
-              : 'Update lending and credit details'}
-          </p>
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-2.5 min-w-0">
+          <Button variant="ghost" size="icon" onClick={goBack} aria-label="Back" className="rounded-full shrink-0">
+            <ArrowLeft className="h-5 w-5" />
+          </Button>
+          <div className="min-w-0">
+            <h1 className="text-lg sm:text-2xl font-bold truncate">
+              {isNew ? (isLoan ? 'Lend Money (सापटी)' : 'Add Udharo Credit') : 'Edit Credit Record'}
+            </h1>
+            <p className="text-xs text-muted-foreground truncate">
+              {isNew
+                ? isLoan
+                  ? 'Disburse cash or bank funds as an informal loan to a customer'
+                  : 'Record manual credit for goods or services outside POS'
+                : 'Update lending and credit details'}
+            </p>
+          </div>
         </div>
+
+        {/* Quick Save in mobile header */}
+        <Button
+          type="button"
+          onClick={handleSubmit}
+          disabled={saving || (!selectedCustomer && customers.length > 0)}
+          size="sm"
+          className="rounded-xl h-9 px-3.5 font-bold shadow-xs shrink-0 md:hidden gap-1.5"
+        >
+          <Save className="h-4 w-4" />
+          {saving ? '...' : 'Save'}
+        </Button>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
@@ -883,9 +897,9 @@ export default function CreditForm() {
           </CardContent>
         </Card>
 
-        {/* 7. Action Bar (Sticky on mobile for ease of use) */}
-        <div className="fixed bottom-0 inset-x-0 z-20 bg-background/95 backdrop-blur-md p-4 border-t shadow-lg md:relative md:p-0 md:bg-transparent md:border-0 md:shadow-none">
-          <div className="max-w-2xl mx-auto flex items-center justify-between gap-3">
+        {/* 7. Action Bar */}
+        <div className="pt-3 pb-8 space-y-3">
+          <div className="flex items-center justify-between gap-3">
             {!isNew && existing && (
               <Button
                 variant="destructive"
@@ -893,7 +907,7 @@ export default function CreditForm() {
                 type="button"
                 onClick={handleDelete}
                 disabled={saving}
-                className="rounded-xl h-12 px-4 shrink-0"
+                className="rounded-xl h-12 px-4 shrink-0 font-bold"
               >
                 <Trash2 className="h-4 w-4 mr-1.5" /> Delete
               </Button>
@@ -902,10 +916,10 @@ export default function CreditForm() {
             <Button
               type="submit"
               size="lg"
-              className="w-full h-12 text-sm font-bold rounded-xl shadow-md cursor-pointer ml-auto"
+              className="w-full h-12 text-sm sm:text-base font-bold rounded-xl shadow-md cursor-pointer ml-auto gap-2"
               disabled={saving || (!selectedCustomer && customers.length > 0)}
             >
-              <Save className="mr-2 h-5 w-5" />
+              <Save className="h-5 w-5" />
               {saving
                 ? 'Processing…'
                 : isNew
