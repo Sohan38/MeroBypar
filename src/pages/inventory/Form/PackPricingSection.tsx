@@ -55,7 +55,7 @@ export const PackPricingSection = React.memo(({
   }, [watchedPackEnabled, isPackPricingEnabled]);
 
   const computedPerUnit = (packSize && packPurchaseCost && Number(packSize) > 0 && Number(packPurchaseCost) > 0)
-    ? computePerUnitCost(Number(packPurchaseCost), Number(packSize), 2)
+    ? safeDiv(Number(packPurchaseCost), Number(packSize), 6)
     : null;
 
   const parsedPackQty = Number(packQuantity) || 0;
@@ -114,10 +114,10 @@ export const PackPricingSection = React.memo(({
     }
   }, [isMultiSupplier, multiSupplierAveragePackCost, form]);
 
-  // Keep form's packPurchaseCost in sync with batch average when in expiry mode
+  // Keep form's packPurchaseCost in sync with batch average when in expiry mode and batches exist
   useEffect(() => {
     if (hasExpiry && averagePurchaseRate > 0 && safePSize > 0) {
-      const batchAvgPackCost = safeCurrency(averagePurchaseRate * safePSize);
+      const batchAvgPackCost = safeCurrency(safeMul(averagePurchaseRate, safePSize, 6));
       const currentVal = form.getValues('packPurchaseCost');
       if (currentVal !== batchAvgPackCost) {
         form.setValue('packPurchaseCost', batchAvgPackCost, { shouldDirty: false });
@@ -154,7 +154,7 @@ export const PackPricingSection = React.memo(({
 
       const curPurchaseRate = Number(form.getValues('purchaseRate') ?? 0);
       const perUnit = (effectiveCostVal !== null && effectiveCostVal > 0)
-        ? computePerUnitCost(effectiveCostVal, sizeVal, 2)
+        ? safeDiv(effectiveCostVal, sizeVal, 6)
         : (source === 'packCost' ? 0 : curPurchaseRate);
       const packs = (qtyVal !== null && qtyVal !== undefined && qtyVal >= 0) ? qtyVal : 1;
       const totalUnits = safeQty(safeMul(packs, sizeVal));
@@ -176,7 +176,7 @@ export const PackPricingSection = React.memo(({
           const supplierPackCost = isMultiSupplier
             ? Number(ss.packCost || effectiveCostVal || 0)
             : ((effectiveCostVal !== null && effectiveCostVal > 0) ? effectiveCostVal : Number(ss.packCost || 0));
-          const supplierUnitCost = supplierPackCost > 0 ? safeCurrency(supplierPackCost / sizeVal) : perUnit;
+          const supplierUnitCost = supplierPackCost > 0 ? safeDiv(supplierPackCost, sizeVal, 6) : perUnit;
           const supplierStock = supplierPacks > 0 ? safeQty(supplierPacks * sizeVal) : Number(ss.stock || 0);
           const supplierTotalCost = safeCurrency(supplierPacks * supplierPackCost);
 
@@ -332,10 +332,13 @@ export const PackPricingSection = React.memo(({
           <div className="grid grid-cols-2 gap-2.5">
             {/* Total Pack Purchase Cost */}
             <FormField control={form.control} name="packPurchaseCost" render={({ field }) => {
-              const isBatchAutoAveraged = hasExpiry && averagePurchaseRate > 0;
-              const isCostLocked = isMultiSupplier || isBatchAutoAveraged;
-              const displayCost = isBatchAutoAveraged
-                ? (safePSize > 0 ? formatMoney(safeMul(averagePurchaseRate, safePSize)) : '')
+              const isCostLocked = isMultiSupplier || hasExpiry;
+              const batchAvgPackCost = (hasExpiry && safePSize > 0 && averagePurchaseRate > 0)
+                ? formatMoney(safeMul(averagePurchaseRate, safePSize, 6))
+                : '';
+
+              const displayCost = hasExpiry
+                ? batchAvgPackCost
                 : (isMultiSupplier
                     ? (multiSupplierAveragePackCost > 0 ? formatMoney(multiSupplierAveragePackCost) : (field.value ?? ''))
                     : (field.value ?? ''));
@@ -343,9 +346,19 @@ export const PackPricingSection = React.memo(({
               return (
                 <FormItem>
                   <FormLabel className="text-[11px] font-medium text-muted-foreground flex items-center justify-between">
-                    <span>{isMultiSupplier ? `Avg. Cost for 1 ${packUnit || 'pack'} (Rs.)` : isBatchAutoAveraged ? `Avg. Cost for 1 ${packUnit || 'pack'}` : `Cost for 1 ${packUnit || 'pack'} (Rs.) *`}</span>
+                    <span>
+                      {isMultiSupplier
+                        ? `Avg. Cost for 1 ${packUnit || 'pack'} (Rs.)`
+                        : hasExpiry
+                          ? `Avg. Cost for 1 ${packUnit || 'pack'}`
+                          : `Cost for 1 ${packUnit || 'pack'} (Rs.) *`}
+                    </span>
                     {isMultiSupplier && <span className="text-[10px] text-blue-600 dark:text-blue-400 font-normal">Auto-averaged</span>}
-                    {isBatchAutoAveraged && <span className="text-[10px] text-primary font-normal">From Batches</span>}
+                    {hasExpiry && (
+                      <span className="text-[10px] text-primary font-normal">
+                        {averagePurchaseRate > 0 ? 'From Batches' : 'Batches Active'}
+                      </span>
+                    )}
                   </FormLabel>
                   <FormControl>
                     <div className="relative">
@@ -354,7 +367,7 @@ export const PackPricingSection = React.memo(({
                         type="number"
                         step="0.01"
                         min={0}
-                        placeholder="e.g. 500"
+                        placeholder={hasExpiry ? "Auto from batches" : "e.g. 500"}
                         {...field}
                         value={displayCost}
                         onChange={e => {
@@ -380,9 +393,11 @@ export const PackPricingSection = React.memo(({
                     <p className="text-[10px] text-muted-foreground">
                       Weighted avg. across suppliers (set individual rates in Suppliers step).
                     </p>
-                  ) : isBatchAutoAveraged ? (
+                  ) : hasExpiry ? (
                     <p className="text-[10px] text-muted-foreground">
-                      Auto-averaged from batch purchase rates (Rs. {formatMoney(averagePurchaseRate)} × {safePSize}).
+                      {averagePurchaseRate > 0
+                        ? `Weighted avg. across batches (Rs. ${formatMoney(averagePurchaseRate)} × ${safePSize}).`
+                        : 'Auto-calculated from batch purchase rates in Inventory step.'}
                     </p>
                   ) : (
                     <FormMessage className="text-xs" />

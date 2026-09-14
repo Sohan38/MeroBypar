@@ -158,7 +158,7 @@ export function roundQuantity(qty: number, unit?: string | null): number {
  * Computes per-unit purchase cost when bought in a bulk pack.
  * Example: packCost = 500, packSize = 30 => 16.6667 (rounded to 2 or 4 decimal places)
  */
-export function computePerUnitCost(packCost: number, packSize: number, maxDecimals: number = 2): number {
+export function computePerUnitCost(packCost: number, packSize: number, maxDecimals: number = 6): number {
   if (!packCost || !packSize || packCost <= 0 || packSize <= 0) {
     return 0;
   }

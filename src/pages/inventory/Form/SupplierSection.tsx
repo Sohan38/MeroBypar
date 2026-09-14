@@ -130,7 +130,7 @@ const SupplierStockCard = React.memo(({
     const packCostNum = newPackCostStr === '' ? 0 : Number(newPackCostStr);
 
     const computedBaseQty = safeQty(packsNum * safePackSize);
-    const computedUnitCost = safePackSize > 0 ? safeCurrency(packCostNum / safePackSize) : 0;
+    const computedUnitCost = safePackSize > 0 ? safeDiv(packCostNum, safePackSize, 6) : 0;
     const computedTotalCost = safeCurrency(packsNum * packCostNum);
 
     setLocalStock(computedBaseQty > 0 ? String(computedBaseQty) : '');
@@ -256,7 +256,7 @@ const SupplierStockCard = React.memo(({
                   onBlur={() => onUpdateRecord(sid, {
                     stock: safeQty((Number(localPacks) || 0) * safePackSize),
                     baseQuantity: safeQty((Number(localPacks) || 0) * safePackSize),
-                    cost: safePackSize > 0 ? safeCurrency((Number(localPackCost) || 0) / safePackSize) : 0,
+                    cost: safePackSize > 0 ? safeDiv(Number(localPackCost) || 0, safePackSize, 6) : 0,
                     totalPurchaseCost: safeCurrency((Number(localPacks) || 0) * (Number(localPackCost) || 0)),
                     packQuantity: Number(localPacks) || null,
                     packCost: Number(localPackCost) || null,
@@ -286,7 +286,7 @@ const SupplierStockCard = React.memo(({
                   onBlur={() => onUpdateRecord(sid, {
                     stock: safeQty((Number(localPacks) || 0) * safePackSize),
                     baseQuantity: safeQty((Number(localPacks) || 0) * safePackSize),
-                    cost: safePackSize > 0 ? safeCurrency((Number(localPackCost) || 0) / safePackSize) : 0,
+                    cost: safePackSize > 0 ? safeDiv(Number(localPackCost) || 0, safePackSize, 6) : 0,
                     totalPurchaseCost: safeCurrency((Number(localPacks) || 0) * (Number(localPackCost) || 0)),
                     packQuantity: Number(localPacks) || null,
                     packCost: Number(localPackCost) || null,

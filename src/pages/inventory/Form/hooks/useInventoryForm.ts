@@ -245,11 +245,19 @@ export function useInventoryForm(
     const totalVariantQuantity = useMemo(() => watchedVariants.reduce((sum, v) => sum + (v.quantity || 0), 0), [watchedVariants]);
 
     const averagePurchaseRate = useMemo(() => {
-        if (!hasExpiry || localBatches.length === 0) return purchaseRateWatch || 0;
+        if (!hasExpiry) return purchaseRateWatch || 0;
+        if (localBatches.length === 0) return 0;
         const totalQty = localBatches.reduce((sum, b) => sum + b.quantity, 0);
-        if (totalQty === 0) return 0;
-        const totalCost = localBatches.reduce((sum, b) => sum + safeMul(Number(b.purchaseRate || 0), Number(b.quantity || 0), 6), 0);
-        return safeDiv(totalCost, totalQty, 6);
+        if (totalQty > 0) {
+            const totalCost = localBatches.reduce((sum, b) => sum + safeMul(Number(b.purchaseRate || 0), Number(b.quantity || 0), 6), 0);
+            return safeDiv(totalCost, totalQty, 6);
+        }
+        // If all batches have 0 stock, average the non-zero purchase rates
+        const nonZeroRates = localBatches.map(b => Number(b.purchaseRate || 0)).filter(r => r > 0);
+        if (nonZeroRates.length > 0) {
+            return safeDiv(nonZeroRates.reduce((a, b) => a + b, 0), nonZeroRates.length, 6);
+        }
+        return 0;
     }, [hasExpiry, localBatches, purchaseRateWatch]);
 
     // Sync purchaseRate from supplierStocks

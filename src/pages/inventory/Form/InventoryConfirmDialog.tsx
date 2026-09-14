@@ -30,7 +30,7 @@ import { ProductFormValues } from './types';
 import { ProductBatch, Supplier } from '@/types';
 import { formatMoney } from '@/utils/unitUtils';
 import { cn } from '@/lib/utils';
-import { safeCurrency, safeQty, getSafePackSize, calculateTotalSupplierStock, calculateWeightedAverageCost } from '@/utils/unitUtils';
+import { safeCurrency, safeQty, safeMul, getSafePackSize, calculateTotalSupplierStock, calculateWeightedAverageCost } from '@/utils/unitUtils';
 
 interface InventoryConfirmDialogProps {
   open: boolean;
@@ -133,9 +133,9 @@ export const InventoryConfirmDialog = React.memo(({
 
   // Pack Pricing info
   const effectivePackCost = hasPackPricing
-    ? (isMultiSupplier
-        ? safeCurrency(effectivePurchaseRate * safePackSize)
-        : Number(values.packPurchaseCost ?? safeCurrency(effectivePurchaseRate * safePackSize)))
+    ? ((isMultiSupplier || hasExpiry)
+        ? safeCurrency(safeMul(effectivePurchaseRate, safePackSize, 6))
+        : Number(values.packPurchaseCost ?? safeCurrency(safeMul(effectivePurchaseRate, safePackSize, 6))))
     : null;
 
   return (
