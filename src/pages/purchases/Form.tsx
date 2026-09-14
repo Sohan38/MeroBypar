@@ -36,13 +36,12 @@ import {
   ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { PurchaseItem, PurchasePaymentStatus, PurchaseStatus } from '@/types';
+import { PurchaseItem, PurchasePaymentStatus, PurchaseStatus, PaymentSplitEntry } from '@/types';
 import { createPurchase, updatePurchase } from '@/services/purchaseService';
 import { ProductSearchPicker } from '@/components/ProductSearchPicker';
 import { SupplierSearchPicker } from '@/components/SupplierSearchPicker';
 import { SupplierFormDialog } from '@/components/SupplierFormDialog';
-import { PaymentMethodPicker } from '@/components/PaymentMethodPicker';
-import { BankSelector } from '@/components/pos/BankSelector';
+import { PaymentDisbursementField } from '@/components/PaymentDisbursementField';
 import { generateBatchNumber, generateSupplierInvoiceNumber } from '@/utils/numbering';
 import { isProductPurchasable } from '@/lib/productCapabilities';
 import { cn } from '@/lib/utils';
@@ -88,7 +87,9 @@ interface PurchaseSummaryViewProps {
   format: (amount: number) => string;
   settingsTaxRate?: number;
   selectedBankAccountId?: string | null;
-  setSelectedBankAccountId?: (id: string) => void;
+  setSelectedBankAccountId?: (id: string | null) => void;
+  splitPayments?: PaymentSplitEntry[];
+  setSplitPayments?: (splits: PaymentSplitEntry[]) => void;
 }
 
 function PurchaseSummaryView({
@@ -124,6 +125,8 @@ function PurchaseSummaryView({
   settingsTaxRate = 13,
   selectedBankAccountId,
   setSelectedBankAccountId,
+  splitPayments = [],
+  setSplitPayments,
 }: PurchaseSummaryViewProps) {
   return (
     <div className="space-y-4">
@@ -400,137 +403,24 @@ function PurchaseSummaryView({
         </div>
       </div>
 
-      {/* Payment Status Segmented Picker */}
+      {/* Payment & Disbursement */}
       <div className="border-t pt-3 space-y-2.5">
         <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider block">
-          Payment Status
+          Payment & Settlement
         </label>
-        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-muted/60 border">
-          <button
-            type="button"
-            onClick={() => setPaymentStatus('unpaid')}
-            className={cn(
-              'py-2 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-0.5',
-              paymentStatus === 'unpaid'
-                ? 'bg-amber-600 text-white shadow-xs'
-                : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-            )}
-          >
-            <span>Unpaid</span>
-            <span className="text-[9px] opacity-85 font-normal">On Credit</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setPaymentStatus('partial');
-              if (!paidAmount || Number(paidAmount) === 0) {
-                setPaidAmount(String(safeCurrency(grandTotal / 2)));
-              }
-            }}
-            className={cn(
-              'py-2 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-0.5',
-              paymentStatus === 'partial'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-            )}
-          >
-            <span>Partial</span>
-            <span className="text-[9px] opacity-85 font-normal">Split / Due</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => setPaymentStatus('paid')}
-            className={cn(
-              'py-2 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-0.5',
-              paymentStatus === 'paid'
-                ? 'bg-green-600 text-white shadow-xs'
-                : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-            )}
-          >
-            <span>Paid</span>
-            <span className="text-[9px] opacity-85 font-normal">In Full</span>
-          </button>
-        </div>
-
-        {/* Status-specific breakdown & Partial input */}
-        {paymentStatus === 'partial' ? (
-          <div className="space-y-2 rounded-xl border p-3 bg-muted/30">
-            <div className="flex items-center justify-between text-xs font-medium">
-              <span className="text-muted-foreground">Amount Paid Now</span>
-              <span className="text-blue-600 dark:text-blue-400 font-semibold tabular-nums">
-                Due: {format(Math.max(0, grandTotal - (Number(paidAmount) || 0)))}
-              </span>
-            </div>
-            <div className="relative">
-              <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground pointer-events-none select-none">
-                Rs.
-              </span>
-              <Input
-                type="number"
-                min="0"
-                max={grandTotal}
-                step="0.01"
-                value={paidAmount}
-                onFocus={e => e.target.select()}
-                onChange={event => setPaidAmount(event.target.value)}
-                className="pl-9 h-9 text-xs font-semibold bg-background"
-              />
-            </div>
-            {/* Quick partial chips */}
-            <div className="flex items-center gap-1 pt-0.5">
-              <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Preset:</span>
-              {[
-                { label: '25%', factor: 0.25 },
-                { label: '50%', factor: 0.5 },
-                { label: '75%', factor: 0.75 },
-              ].map(preset => (
-                <button
-                  key={preset.label}
-                  type="button"
-                  onClick={() => setPaidAmount(String(safeCurrency(grandTotal * preset.factor)))}
-                  className="text-[10px] px-2 py-0.5 rounded border bg-background hover:bg-muted text-muted-foreground"
-                >
-                  {preset.label}
-                </button>
-              ))}
-            </div>
-          </div>
-        ) : paymentStatus === 'unpaid' ? (
-          <div className="rounded-xl border border-amber-200/60 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/50 p-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-            <div>
-              <p className="font-semibold leading-tight">Supplier Payable</p>
-              <p className="text-[11px] opacity-90 mt-0.5">
-                Full {format(grandTotal)} will be added to {selectedSupplierName ? `${selectedSupplierName}'s` : "supplier's"} credit balance.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="rounded-xl border border-green-200/60 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900/50 p-2.5 text-xs text-green-800 dark:text-green-300 flex items-center gap-2">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
-            <span className="font-medium text-[11px]">Paid in full ({format(grandTotal)})</span>
-          </div>
-        )}
-
-        {/* Payment Method & Bank Selector - ONLY shown when NOT unpaid */}
-        {paymentStatus !== 'unpaid' && (
-          <div className="space-y-2.5 pt-2">
-            <PaymentMethodPicker
-              label="Payment Method"
-              selectedMethod={paymentMethod}
-              onSelect={setPaymentMethod}
-              methods={['cash', 'qr', 'card', 'bank', 'split', 'other']}
-            />
-
-            {paymentMethod === 'bank' && setSelectedBankAccountId && (
-              <BankSelector
-                selectedAccountId={selectedBankAccountId}
-                onSelectAccountId={setSelectedBankAccountId}
-                label="Pay from Bank Account"
-              />
-            )}
-          </div>
-        )}
+        <PaymentDisbursementField
+          amount={grandTotal}
+          paymentStatus={paymentStatus}
+          onPaymentStatusChange={setPaymentStatus}
+          paidAmount={paidAmount}
+          onPaidAmountChange={setPaidAmount}
+          paymentMethod={paymentMethod}
+          onPaymentMethodChange={setPaymentMethod}
+          selectedBankAccountId={selectedBankAccountId}
+          onBankAccountIdChange={setSelectedBankAccountId}
+          splitPayments={splitPayments}
+          onSplitPaymentsChange={setSplitPayments}
+        />
       </div>
 
       {/* Submit CTA */}
@@ -577,6 +467,7 @@ export default function PurchaseForm() {
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<string | null>(existing?.bankAccountId ?? null);
   const [paymentStatus, setPaymentStatus] = useState<PurchasePaymentStatus>(existing?.paymentStatus ?? 'unpaid');
   const [paidAmount, setPaidAmount] = useState(String(existing?.paidAmount ?? 0));
+  const [splitPayments, setSplitPayments] = useState<PaymentSplitEntry[]>(() => existing?.splitPayments ?? []);
   const [notes, setNotes] = useState(existing?.notes ?? '');
   const [items, setItems] = useState<DraftItem[]>(() => (existing?.items ?? []).map(item => ({
     ...item,
@@ -830,22 +721,37 @@ export default function PurchaseForm() {
     const normalizedGrandTotal = Number(grandTotal) || 0;
     const parsedPaidAmount = Number(paidAmount) || 0;
 
+    if (paymentStatus === 'unpaid') {
+      return { paymentStatus: 'unpaid', paidAmount: 0 };
+    }
+
+    if (paymentMethod === 'split' && splitPayments.length > 0) {
+      const totalSplit = splitPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+      if (totalSplit <= 0) {
+        return { paymentStatus: 'unpaid', paidAmount: 0 };
+      }
+      if (totalSplit >= normalizedGrandTotal && normalizedGrandTotal > 0) {
+        return { paymentStatus: 'paid', paidAmount: normalizedGrandTotal };
+      }
+      return { paymentStatus: 'partial', paidAmount: Math.min(totalSplit, normalizedGrandTotal) };
+    }
+
     if (paymentStatus === 'partial') {
       const normalizedPaidAmount = Math.min(Math.max(0, parsedPaidAmount), normalizedGrandTotal);
       if (normalizedPaidAmount <= 0) {
-        return { paymentStatus: 'unpaid' as PurchasePaymentStatus, paidAmount: 0 };
+        return { paymentStatus: 'unpaid', paidAmount: 0 };
       }
       if (normalizedPaidAmount >= normalizedGrandTotal && normalizedGrandTotal > 0) {
-        return { paymentStatus: 'paid' as PurchasePaymentStatus, paidAmount: normalizedGrandTotal };
+        return { paymentStatus: 'paid', paidAmount: normalizedGrandTotal };
       }
-      return { paymentStatus: 'partial' as PurchasePaymentStatus, paidAmount: normalizedPaidAmount };
+      return { paymentStatus: 'partial', paidAmount: normalizedPaidAmount };
     }
 
     if (paymentStatus === 'paid') {
-      return { paymentStatus: 'paid' as PurchasePaymentStatus, paidAmount: normalizedGrandTotal };
+      return { paymentStatus: 'paid', paidAmount: normalizedGrandTotal };
     }
 
-    return { paymentStatus: 'unpaid' as PurchasePaymentStatus, paidAmount: 0 };
+    return { paymentStatus: 'unpaid', paidAmount: 0 };
   }
 
   async function handleSubmit(event: React.FormEvent): Promise<void> {
@@ -938,6 +844,7 @@ export default function PurchaseForm() {
         paymentStatus: validatedPayment.paymentStatus,
         paidAmount: validatedPayment.paidAmount,
         bankAccountId: paymentMethod === 'bank' ? selectedBankAccountId : null,
+        splitPayments: paymentMethod === 'split' ? splitPayments : undefined,
         referenceNumber: referenceNumber.trim(),
         notes: notes.trim(),
         status,
@@ -1403,6 +1310,8 @@ export default function PurchaseForm() {
                 settingsTaxRate={settings.taxRate}
                 selectedBankAccountId={selectedBankAccountId}
                 setSelectedBankAccountId={setSelectedBankAccountId}
+                splitPayments={splitPayments}
+                setSplitPayments={setSplitPayments}
               />
             </CardContent>
           </Card>
@@ -1521,6 +1430,8 @@ export default function PurchaseForm() {
                   settingsTaxRate={settings.taxRate}
                   selectedBankAccountId={selectedBankAccountId}
                   setSelectedBankAccountId={setSelectedBankAccountId}
+                  splitPayments={splitPayments}
+                  setSplitPayments={setSplitPayments}
                 />
               </div>
             </div>

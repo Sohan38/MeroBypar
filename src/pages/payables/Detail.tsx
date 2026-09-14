@@ -7,9 +7,8 @@ import { useCurrency } from '@/hooks/useCurrency';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
-import { PaymentMethodPicker, SettlePaymentMethod } from '@/components/PaymentMethodPicker';
-import { BankSelector } from '@/components/pos/BankSelector';
+import { SettlePaymentMethod } from '@/components/PaymentMethodPicker';
+import { PaymentDisbursementField } from '@/components/PaymentDisbursementField';
 import {
   ArrowLeft, Truck, Calendar, Banknote, CheckCircle2,
   Clock, TrendingDown, History, ChevronRight, Phone,
@@ -18,7 +17,7 @@ import {
 import { format as formatDate, parseISO } from 'date-fns';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { CreditPayment } from '@/types';
+import { CreditPayment, PaymentSplitEntry } from '@/types';
 import { patchPurchase, patchPurchaseFinancial } from '@/services/purchaseService';
 
 export default function PayableDetail() {
@@ -31,8 +30,9 @@ export default function PayableDetail() {
   const { format } = useCurrency();
 
   const [paymentAmount, setPaymentAmount] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState<SettlePaymentMethod>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<string>('cash');
   const [selectedBankAccountId, setSelectedBankAccountId] = useState<string | null>(null);
+  const [splitPayments, setSplitPayments] = useState<PaymentSplitEntry[]>([]);
   const [showPaymentForm, setShowPaymentForm] = useState(false);
   const [saving, setSaving] = useState(false);
 
@@ -90,8 +90,12 @@ export default function PayableDetail() {
   };
 
   const handleRecordPayment = async () => {
-    const amt = Number(paymentAmount);
-    if (!paymentAmount || isNaN(amt) || amt <= 0) {
+    let amt = Number(paymentAmount);
+    if (paymentMethod === 'split') {
+      amt = splitPayments.reduce((s, p) => s + (Number(p.amount) || 0), 0);
+    }
+
+    if (!amt || isNaN(amt) || amt <= 0) {
       toast.error('Enter a valid payment amount');
       return;
     }
@@ -109,9 +113,10 @@ export default function PayableDetail() {
         id: `${invoice.id}:payment:${Date.now()}`,
         date: new Date().toISOString(),
         amount: amt,
-        note: PAYMENT_METHOD_LABELS[paymentMethod],
-        paymentMethod,
+        note: paymentMethod === 'split' ? 'Split Payment' : (PAYMENT_METHOD_LABELS[paymentMethod as SettlePaymentMethod] || paymentMethod),
+        paymentMethod: paymentMethod as any,
         financialAccountId: paymentMethod === 'bank' ? selectedBankAccountId : null,
+        splitPayments: paymentMethod === 'split' ? splitPayments : undefined,
       };
 
       const commit = async () => {
@@ -119,6 +124,8 @@ export default function PayableDetail() {
           paidAmount: nextPaidAmount,
           payments: [...payments, newPayment],
           paymentStatus: isFullyPaid ? 'paid' : 'partial',
+          splitPayments: paymentMethod === 'split' ? splitPayments : undefined,
+          bankAccountId: paymentMethod === 'bank' ? selectedBankAccountId : null,
         });
       };
       if (storage.transaction) {
@@ -130,6 +137,7 @@ export default function PayableDetail() {
       toast.success(isFullyPaid ? 'Invoice fully settled!' : `${format(amt)} payment recorded`);
       setPaymentAmount('');
       setPaymentMethod('cash');
+      setSplitPayments([]);
       setShowPaymentForm(false);
     } finally {
       setSaving(false);
@@ -206,7 +214,16 @@ export default function PayableDetail() {
           {ps !== 'paid' && (
             <div className="pt-2">
               {!showPaymentForm ? (
-                <Button className="w-full h-12 text-sm font-semibold rounded-xl gap-2 shadow-sm" size="lg" onClick={() => setShowPaymentForm(true)}>
+                <Button
+                  className="w-full h-12 text-sm font-semibold rounded-xl gap-2 shadow-sm cursor-pointer"
+                  size="lg"
+                  onClick={() => {
+                    setShowPaymentForm(true);
+                    if (!paymentAmount) {
+                      setPaymentAmount(String(remainingAmount));
+                    }
+                  }}
+                >
                   <CreditCard className="h-4 w-4" />
                   Record Supplier Settle
                 </Button>
@@ -216,64 +233,31 @@ export default function PayableDetail() {
                     <Banknote className="h-4 w-4 text-muted-foreground" />
                     Record Settlement Amount
                   </h3>
-                  <div className="space-y-4">
-                    <PaymentMethodPicker
-                      selectedMethod={paymentMethod}
-                      onSelect={setPaymentMethod}
-                    />
-                    {paymentMethod === 'bank' && (
-                      <BankSelector
-                        selectedAccountId={selectedBankAccountId}
-                        onSelectAccountId={setSelectedBankAccountId}
-                        label="Pay from Bank Account"
-                      />
-                    )}
-                    <div className="space-y-2">
-                      <label className="text-xs text-muted-foreground font-semibold">
-                        Paying Amount <span className="text-foreground font-bold">(max {format(remainingAmount)})</span>
-                      </label>
-                      <Input
-                        type="number"
-                        inputMode="decimal"
-                        placeholder="0.00"
-                        value={paymentAmount}
-                        onChange={e => setPaymentAmount(e.target.value)}
-                        min="0.01"
-                        max={remainingAmount}
-                        className="h-12 text-base rounded-xl font-bold bg-background"
-                        autoFocus
-                      />
-                    </div>
-                  </div>
 
-                  {/* Quick percentage buttons */}
-                  <div className="flex flex-wrap gap-2">
-                    {[25, 50, 75, 100].map(pct => {
-                      const val = Math.round(remainingAmount * pct) / 100;
-                      if (val <= 0) return null;
-                      return (
-                        <button
-                          key={pct}
-                          type="button"
-                          onClick={() => setPaymentAmount(String(val))}
-                          className={cn(
-                            'px-3 py-1.5 text-xs font-bold rounded-full border transition-all duration-200',
-                            paymentAmount === String(val)
-                              ? 'bg-primary text-primary-foreground border-primary shadow-sm'
-                              : 'bg-background hover:border-primary/50 hover:bg-primary/5',
-                          )}
-                        >
-                          {pct === 100 ? 'Settle Full' : `${pct}%`} · {format(val)}
-                        </button>
-                      );
-                    })}
-                  </div>
+                  <PaymentDisbursementField
+                    amount={remainingAmount}
+                    paymentStatus={paymentAmount && Number(paymentAmount) >= remainingAmount ? 'paid' : 'partial'}
+                    onPaymentStatusChange={() => {}}
+                    paidAmount={paymentAmount}
+                    onPaidAmountChange={val => setPaymentAmount(String(val))}
+                    paymentMethod={paymentMethod}
+                    onPaymentMethodChange={m => setPaymentMethod(m)}
+                    selectedBankAccountId={selectedBankAccountId}
+                    onBankAccountIdChange={setSelectedBankAccountId}
+                    splitPayments={splitPayments}
+                    onSplitPaymentsChange={setSplitPayments}
+                    hideStatusSelector={true}
+                  />
 
                   <div className="flex gap-3 pt-2">
                     <Button
                       variant="outline"
                       className="flex-1 h-11 rounded-xl font-semibold"
-                      onClick={() => { setShowPaymentForm(false); setPaymentAmount(''); }}
+                      onClick={() => {
+                        setShowPaymentForm(false);
+                        setPaymentAmount('');
+                        setSplitPayments([]);
+                      }}
                     >
                       Cancel
                     </Button>

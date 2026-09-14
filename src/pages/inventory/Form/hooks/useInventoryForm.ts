@@ -10,7 +10,7 @@ import { getBatchStatus } from '@/components/BatchFormDialog';
 import { generateSupplierInvoiceNumber, generateBatchNumber } from '@/utils/numbering';
 import { useStorageProvider } from '@/storage/StorageContext';
 import { createPurchasesForNewItem } from '@/services/purchaseHelpers';
-import { PaymentMethod, ProductUnit, ProductBatch, BatchFormData, PurchasePaymentStatus } from '@/types';
+import { PaymentMethod, PaymentSplitEntry, ProductUnit, ProductBatch, BatchFormData, PurchasePaymentStatus } from '@/types';
 import { useApp } from '@/contexts/AppContext';
 import { productSchema, ProductFormValues } from '../types';
 import {
@@ -38,6 +38,7 @@ export type SupplierPurchaseDraft = {
     paymentStatus: PurchasePaymentStatus;
     paidAmount: string;
     bankAccountId?: string | null;
+    splitPayments?: PaymentSplitEntry[];
     notes: string;
 };
 

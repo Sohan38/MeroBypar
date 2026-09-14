@@ -4,6 +4,8 @@ import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { PaymentMethodPicker } from '@/components/PaymentMethodPicker';
 import { BankSelector } from '@/components/pos/BankSelector';
+import { PaymentDisbursementField } from '@/components/PaymentDisbursementField';
+import { PaymentMethod } from '@/types';
 import { useCurrency } from '@/hooks/useCurrency';
 import { cn } from '@/lib/utils';
 import {
@@ -120,6 +122,8 @@ export const PurchaseCaptureSection = React.memo(({
         paymentMethod: 'cash',
         paymentStatus: 'unpaid',
         paidAmount: '0',
+        bankAccountId: null,
+        splitPayments: [],
         notes: '',
     };
 
@@ -381,128 +385,21 @@ export const PurchaseCaptureSection = React.memo(({
                         )}
                     </div>
 
-                    {/* Payment Status Segmented Selector */}
-                    <div className="space-y-2">
-                        <label className="text-xs font-semibold text-muted-foreground uppercase tracking-wide block">
-                            Payment Status
-                        </label>
-                        <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-muted/60 border border-border/50">
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    updatePurchaseDraft(activeSupplierId, 'paymentStatus', 'unpaid');
-                                    updatePurchaseDraft(activeSupplierId, 'paidAmount', '0');
-                                }}
-                                className={cn(
-                                    'py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5',
-                                    draft.paymentStatus === 'unpaid'
-                                        ? 'bg-amber-500 text-white shadow-xs'
-                                        : 'text-muted-foreground hover:text-foreground'
-                                )}
-                            >
-                                <Clock className="h-3.5 w-3.5" />
-                                <span>Unpaid</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    updatePurchaseDraft(activeSupplierId, 'paymentStatus', 'partial');
-                                    if (!draft.paidAmount || draft.paidAmount === '0') {
-                                        updatePurchaseDraft(activeSupplierId, 'paidAmount', String(safeCurrency(grandTotal * 0.5)));
-                                    }
-                                }}
-                                className={cn(
-                                    'py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5',
-                                    draft.paymentStatus === 'partial'
-                                        ? 'bg-blue-600 text-white shadow-xs'
-                                        : 'text-muted-foreground hover:text-foreground'
-                                )}
-                            >
-                                <Tag className="h-3.5 w-3.5" />
-                                <span>Partial</span>
-                            </button>
-                            <button
-                                type="button"
-                                onClick={() => {
-                                    updatePurchaseDraft(activeSupplierId, 'paymentStatus', 'paid');
-                                    updatePurchaseDraft(activeSupplierId, 'paidAmount', String(grandTotal));
-                                }}
-                                className={cn(
-                                    'py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5',
-                                    draft.paymentStatus === 'paid'
-                                        ? 'bg-emerald-600 text-white shadow-xs'
-                                        : 'text-muted-foreground hover:text-foreground'
-                                )}
-                            >
-                                <CheckCircle2 className="h-3.5 w-3.5" />
-                                <span>Paid</span>
-                            </button>
-                        </div>
-                    </div>
-
-                    {/* Unpaid Info Note */}
-                    {draft.paymentStatus === 'unpaid' && (
-                        <div className="flex items-center gap-2 p-2.5 rounded-lg bg-amber-500/10 border border-amber-500/20 text-xs text-amber-800 dark:text-amber-300">
-                            <AlertCircle className="h-4 w-4 shrink-0 text-amber-600" />
-                            <span>
-                                Recorded as unpaid credit. <strong>{format(grandTotal)}</strong> will be added to <strong>{activeSupplierName}</strong>'s balance.
-                            </span>
-                        </div>
-                    )}
-
-                    {/* Partial Amount Input & Due Calculation */}
-                    {draft.paymentStatus === 'partial' && (
-                        <div className="p-3 rounded-xl bg-blue-500/5 border border-blue-500/20 space-y-2.5">
-                            <div className="flex items-center justify-between">
-                                <span className="text-xs font-semibold text-blue-900 dark:text-blue-300">Amount Paid Now</span>
-                                <span className="text-xs font-semibold text-muted-foreground">
-                                    Remaining Due: <strong className="text-amber-600 dark:text-amber-400">{format(remainingDue)}</strong>
-                                </span>
-                            </div>
-                            <Input
-                                type="number"
-                                min="0"
-                                max={grandTotal}
-                                value={draft.paidAmount}
-                                onChange={e => updatePurchaseDraft(activeSupplierId, 'paidAmount', e.target.value)}
-                                placeholder="0"
-                                className="h-9 text-base font-bold bg-background"
-                            />
-                            <div className="flex items-center gap-1.5 pt-1">
-                                {[0.25, 0.5, 0.75].map(ratio => {
-                                    const presetVal = safeCurrency(grandTotal * ratio);
-                                    return (
-                                        <button
-                                            key={ratio}
-                                            type="button"
-                                            onClick={() => updatePurchaseDraft(activeSupplierId, 'paidAmount', String(presetVal))}
-                                            className="px-2 py-1 rounded-md text-[11px] font-semibold bg-background border hover:bg-muted text-muted-foreground"
-                                        >
-                                            {ratio * 100}% ({format(presetVal)})
-                                        </button>
-                                    );
-                                })}
-                            </div>
-                        </div>
-                    )}
-
-                    {/* Payment Method Selector (Shown for Paid and Partial) */}
-                    {(draft.paymentStatus === 'paid' || draft.paymentStatus === 'partial') && (
-                        <div className="space-y-2.5 pt-1">
-                            <PaymentMethodPicker
-                                label="Payment Method"
-                                selectedMethod={draft.paymentMethod || 'cash'}
-                                onSelect={(method: string) => updatePurchaseDraft(activeSupplierId, 'paymentMethod', method)}
-                            />
-                            {draft.paymentMethod === 'bank' && (
-                                <BankSelector
-                                    selectedAccountId={draft.bankAccountId}
-                                    onSelectAccountId={(id: string) => updatePurchaseDraft(activeSupplierId, 'bankAccountId', id)}
-                                    label="Pay from Bank Account"
-                                />
-                            )}
-                        </div>
-                    )}
+                    {/* Payment Disbursement & Funds Section */}
+                    <PaymentDisbursementField
+                        paymentStatus={draft.paymentStatus}
+                        onPaymentStatusChange={status => updatePurchaseDraft(activeSupplierId, 'paymentStatus', status)}
+                        paymentMethod={(draft.paymentMethod || 'cash') as PaymentMethod}
+                        onPaymentMethodChange={method => updatePurchaseDraft(activeSupplierId, 'paymentMethod', method)}
+                        bankAccountId={draft.bankAccountId}
+                        onBankAccountIdChange={id => updatePurchaseDraft(activeSupplierId, 'bankAccountId', id)}
+                        grandTotal={grandTotal}
+                        paidAmount={Number(draft.paidAmount || 0)}
+                        onPaidAmountChange={amount => updatePurchaseDraft(activeSupplierId, 'paidAmount', String(amount))}
+                        splitPayments={draft.splitPayments || []}
+                        onSplitPaymentsChange={splits => updatePurchaseDraft(activeSupplierId, 'splitPayments', splits)}
+                        supplierName={activeSupplierName}
+                    />
 
                     {/* Optional Collapsed Advanced Options (Invoice #, Date, Notes) */}
                     <div className="pt-2 border-t border-border/40">

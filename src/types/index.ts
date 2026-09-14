@@ -233,6 +233,14 @@ export interface Customer extends StorageRecord {
 
 export type PaymentMethod = 'cash' | 'qr' | 'card' | 'bank' | 'other' | 'split' | 'credit';
 
+export interface PaymentSplitEntry {
+  id: string;
+  method: Exclude<PaymentMethod, 'split' | 'credit'>;
+  amount: number;
+  bankAccountId?: string | null;
+  notes?: string;
+}
+
 export type FinancialAccountType = 'cash' | 'bank' | 'cooperative' | 'digital' | 'card' | 'receivable' | 'payable' | 'clearing';
 export type FinancialAccountStatus = 'active' | 'inactive';
 export type FinancialTransactionType =
@@ -367,6 +375,7 @@ export interface PurchaseInvoice extends StorageRecord {
   payments?: CreditPayment[];
   locationId?: string; // which location this purchase is for
   bankAccountId?: string | null; // explicit destination bank account when paymentMethod is bank
+  splitPayments?: PaymentSplitEntry[];
 }
 
 export interface SaleCostAllocation {
@@ -495,9 +504,11 @@ export interface CreditPayment {
   date: string;
   amount: number;
   note: string;
-  paymentMethod?: Exclude<PaymentMethod, 'split' | 'credit'>;
+  paymentMethod?: PaymentMethod;
   financialAccountId?: string | null;
+  bankAccountId?: string | null;
   reference?: string | null;
+  splitPayments?: PaymentSplitEntry[];
 }
 
 export interface Credit extends StorageRecord {

@@ -6,6 +6,7 @@ import type {
     FinancialTransaction,
     FinancialTransactionType,
     PaymentMethod,
+    PaymentSplitEntry,
 } from '@/types';
 import type { IStorageProvider } from '@/storage/IStorageProvider';
 
@@ -274,29 +275,62 @@ export class FinancialPostingService {
         id: string;
         date: string;
         amount: number;
-        paymentMethod: Exclude<PaymentMethod, 'split' | 'credit'>;
+        paymentMethod: PaymentMethod;
         purchaseId: string;
         eventKey?: string;
         invoiceNumber?: string | null;
         supplierName?: string | null;
         bankAccountId?: string | null;
+        splitPayments?: PaymentSplitEntry[];
     }) {
         await this.ensureDefaultAccounts(storage);
-        const explicitId = payment.paymentMethod === 'bank' ? payment.bankAccountId : null;
-        const accountId = await this.resolvePaymentAccount(storage, payment.paymentMethod, explicitId);
-        if (!accountId) throw new Error(`No financial account configured for ${payment.paymentMethod}.`);
-        return this.post(storage, {
-            date: payment.date,
-            type: 'supplier_payment',
-            description: `Supplier payment${payment.invoiceNumber ? ` · ${payment.invoiceNumber}` : ''}${payment.supplierName ? ` · ${payment.supplierName}` : ''}`,
-            sourceType: 'supplier_payment',
-            sourceId: payment.id,
-            idempotencyKey: payment.eventKey ?? `supplier-payment:${payment.id}`,
-            movements: [
-                { accountId: 'financial-account-payables', amount: -Math.abs(payment.amount) },
-                { accountId, amount: -Math.abs(payment.amount) },
-            ],
-        });
+
+        // Handle split payments disbursement
+        if (payment.paymentMethod === 'split' && payment.splitPayments && payment.splitPayments.length > 0) {
+            const movements: FinancialMovementInput[] = [];
+            let totalSplitAmount = 0;
+            for (const split of payment.splitPayments) {
+                const splitAmt = Math.max(0, Number(split.amount) || 0);
+                if (splitAmt <= 0) continue;
+                totalSplitAmount += splitAmt;
+                const explicitId = split.method === 'bank' ? split.bankAccountId : null;
+                const accountId = await this.resolvePaymentAccount(storage, split.method, explicitId);
+                if (!accountId) throw new Error(`No financial account configured for ${split.method}.`);
+                movements.push({ accountId, amount: -Math.abs(splitAmt) });
+            }
+            if (movements.length > 0) {
+                movements.unshift({ accountId: 'financial-account-payables', amount: -Math.abs(totalSplitAmount) });
+                return this.post(storage, {
+                    date: payment.date,
+                    type: 'supplier_payment',
+                    description: `Supplier payment (Split)${payment.invoiceNumber ? ` · ${payment.invoiceNumber}` : ''}${payment.supplierName ? ` · ${payment.supplierName}` : ''}`,
+                    sourceType: 'supplier_payment',
+                    sourceId: payment.id,
+                    idempotencyKey: payment.eventKey ?? `supplier-payment:${payment.id}`,
+                    movements,
+                });
+            }
+            return null;
+        }
+
+        if (isAccountPaymentMethod(payment.paymentMethod)) {
+            const explicitId = payment.paymentMethod === 'bank' ? payment.bankAccountId : null;
+            const accountId = await this.resolvePaymentAccount(storage, payment.paymentMethod, explicitId);
+            if (!accountId) throw new Error(`No financial account configured for ${payment.paymentMethod}.`);
+            return this.post(storage, {
+                date: payment.date,
+                type: 'supplier_payment',
+                description: `Supplier payment${payment.invoiceNumber ? ` · ${payment.invoiceNumber}` : ''}${payment.supplierName ? ` · ${payment.supplierName}` : ''}`,
+                sourceType: 'supplier_payment',
+                sourceId: payment.id,
+                idempotencyKey: payment.eventKey ?? `supplier-payment:${payment.id}`,
+                movements: [
+                    { accountId: 'financial-account-payables', amount: -Math.abs(payment.amount) },
+                    { accountId, amount: -Math.abs(payment.amount) },
+                ],
+            });
+        }
+        return null;
     }
 
     static async postPurchase(storage: IStorageProvider, purchase: {
@@ -311,6 +345,7 @@ export class FinancialPostingService {
         invoiceNumber?: string | null;
         supplierName?: string | null;
         bankAccountId?: string | null;
+        splitPayments?: PaymentSplitEntry[];
     }) {
         await this.ensureDefaultAccounts(storage);
         if (purchase.status !== 'received') return null;
@@ -331,26 +366,45 @@ export class FinancialPostingService {
             for (const payment of purchase.payments) {
                 const pmtAmount = Number(payment.amount) || 0;
                 if (pmtAmount <= 0) continue;
-                const method = (payment.paymentMethod && isAccountPaymentMethod(payment.paymentMethod))
-                    ? payment.paymentMethod
-                    : (isAccountPaymentMethod(purchase.paymentMethod) ? purchase.paymentMethod : 'cash');
+                const method = payment.paymentMethod ?? (purchase.paymentMethod || 'cash');
                 lastResult = await this.postSupplierPayment(storage, {
-                    id: payment.id,
+                    id: payment.id || uuidv4(),
                     purchaseId: purchase.id,
                     date: payment.date || purchase.date,
                     amount: pmtAmount,
                     paymentMethod: method,
-                    eventKey: `purchase:${purchase.id}:payment:${payment.id}:v${purchase.version ?? 1}`,
+                    eventKey: `purchase:${purchase.id}:payment:${payment.id || uuidv4()}:v${purchase.version ?? 1}`,
                     invoiceNumber: purchase.invoiceNumber,
                     supplierName: purchase.supplierName,
-                    bankAccountId: payment.financialAccountId,
+                    bankAccountId: payment.bankAccountId ?? payment.financialAccountId ?? (payment.paymentMethod === 'bank' ? purchase.bankAccountId : null),
+                    splitPayments: payment.splitPayments,
                 });
             }
             return lastResult;
         }
 
-        // 2. Otherwise if single upfront payment was made
-        const paidAmount = purchase.paymentMethod === 'credit' || purchase.paymentMethod === 'split'
+        // 2. Upfront split payment during purchase creation
+        if (purchase.paymentMethod === 'split') {
+            const splits = (purchase.splitPayments ?? []).filter(s => Number(s.amount) > 0);
+            if (splits.length > 0) {
+                const totalSplitAmount = splits.reduce((sum, s) => sum + Number(s.amount || 0), 0);
+                return this.postSupplierPayment(storage, {
+                    id: `${purchase.id}:split-payment:v${purchase.version ?? 1}`,
+                    purchaseId: purchase.id,
+                    date: purchase.date,
+                    amount: totalSplitAmount,
+                    paymentMethod: 'split',
+                    splitPayments: splits,
+                    eventKey: `purchase:${purchase.id}:payment:v${purchase.version ?? 1}`,
+                    invoiceNumber: purchase.invoiceNumber,
+                    supplierName: purchase.supplierName,
+                });
+            }
+            return null;
+        }
+
+        // 3. Otherwise if single upfront payment was made
+        const paidAmount = purchase.paymentMethod === 'credit'
             ? 0
             : Math.min(Math.max(0, Number(purchase.paidAmount) || 0), payableAmount);
         if (paidAmount <= 0) return null;
@@ -363,7 +417,7 @@ export class FinancialPostingService {
             eventKey: `purchase:${purchase.id}:payment:v${purchase.version ?? 1}`,
             invoiceNumber: purchase.invoiceNumber,
             supplierName: purchase.supplierName,
-            bankAccountId: purchase.bankAccountId,
+            bankAccountId: purchase.paymentMethod === 'bank' ? purchase.bankAccountId : null,
         });
     }
 

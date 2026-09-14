@@ -1,7 +1,7 @@
 import { IStorageProvider } from '@/storage/IStorageProvider';
 import { createPurchase } from './purchaseService';
 import { generateSupplierInvoiceNumber } from '@/utils/numbering';
-import { Product } from '@/types';
+import { Product, PaymentSplitEntry } from '@/types';
 import { safeCurrency, safeMul, safeQty } from '@/utils/unitUtils';
 
 export type CreatePurchaseForStockOpts = {
@@ -104,6 +104,7 @@ export type CreatePurchaseForNewItemOpts = {
     packUnit?: string | null;
     packSize?: number | null;
     bankAccountId?: string | null;
+    splitPayments?: PaymentSplitEntry[];
 };
 
 async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsList: CreatePurchaseForNewItemOpts[]) {
@@ -126,6 +127,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
         paymentStatus?: 'paid' | 'partial' | 'unpaid';
         paidAmount?: number;
         bankAccountId?: string | null;
+        splitPayments?: PaymentSplitEntry[];
     }> = new Map();
 
     for (const opts of optsList) {
@@ -177,6 +179,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
             if (opts.paidAmount != null && (existing.paidAmount == null || existing.paidAmount === 0 || opts.paidAmount > (existing.paidAmount || 0))) existing.paidAmount = opts.paidAmount;
             if (opts.referenceNumber && !existing.referenceNumber) existing.referenceNumber = opts.referenceNumber;
             if (opts.bankAccountId && !existing.bankAccountId) existing.bankAccountId = opts.bankAccountId;
+            if (opts.splitPayments && opts.splitPayments.length > 0) existing.splitPayments = opts.splitPayments;
         } else {
             grouped.set(groupingKey, {
                 supplierId: supplierId || undefined,
@@ -193,6 +196,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
                 paymentStatus: opts.paymentStatus,
                 paidAmount: opts.paidAmount,
                 bankAccountId: opts.bankAccountId,
+                splitPayments: opts.splitPayments,
             });
         }
     }
@@ -229,6 +233,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
             paymentStatus,
             paidAmount,
             bankAccountId: group.paymentMethod === 'bank' ? (group.bankAccountId ?? undefined) : undefined,
+            splitPayments: group.splitPayments ?? undefined,
             referenceNumber: group.referenceNumber || undefined,
             notes: group.notes || '',
             status: 'received' as const,

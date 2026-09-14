@@ -631,6 +631,8 @@ export async function patchPurchaseFinancial(storage: IStorageProvider, id: stri
         paymentMethod: updates.paymentMethod ?? previous.paymentMethod,
         payments: updates.payments ?? previous.payments,
         date: updates.date ?? previous.date,
+        bankAccountId: updates.bankAccountId ?? previous.bankAccountId,
+        splitPayments: updates.splitPayments ?? previous.splitPayments,
     };
 
     const candidate = makePurchase({ ...previous, ...paymentFields, id } as PurchaseInput, previous);
