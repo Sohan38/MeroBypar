@@ -12,6 +12,7 @@ import {
   Lock,
   Boxes,
   Sparkles,
+  Info,
 } from 'lucide-react';
 
 const COMMON_PACK_UNITS = ['carton', 'box', 'case', 'strip', 'pack', 'crate', 'bundle', 'bag'];
@@ -394,9 +395,10 @@ export const PackPricingSection = React.memo(({
             <FormField control={form.control} name="packQuantity" render={({ field }) => {
               const isPacksFromBatches = hasExpiry;
               const batchPacks = hasExpiry && safePSize > 0 ? Math.floor(totalBatchQuantity / safePSize) : 0;
-              const currentVal = isPacksFromBatches ? batchPacks : (field.value ?? '');
-              const numVal = currentVal === '' ? 0 : Number(currentVal);
+              const rawVal = isPacksFromBatches ? batchPacks : field.value;
+              const numVal = Number(rawVal) || 0;
               const totalPieces = safePSize > 0 ? safeQty(safeMul(numVal, safePSize)) : 0;
+              const displayVal = isPacksFromBatches ? batchPacks : (field.value === 0 ? '' : (field.value ?? ''));
 
               return (
                 <FormItem className="space-y-1.5">
@@ -407,12 +409,13 @@ export const PackPricingSection = React.memo(({
                     </span>
                     {isPacksFromBatches ? (
                       <span className="text-[10px] text-primary font-normal">From Batches</span>
-                    ) : (
-                      <span className={cn(
-                        "text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded transition-colors",
-                        numVal > 0 ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"
-                      )}>
+                    ) : numVal > 0 ? (
+                      <span className="text-[10px] font-semibold tabular-nums px-1.5 py-0.5 rounded bg-primary/10 text-primary transition-colors">
                         = {totalPieces} {baseUnit}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-medium text-amber-700 dark:text-amber-400 bg-amber-100/60 dark:bg-amber-950/40 px-1.5 py-0.5 rounded border border-amber-300/50 dark:border-amber-800/50 flex items-center gap-1 transition-colors">
+                        <Info className="h-3 w-3 text-amber-600 dark:text-amber-400" /> 0 Stock
                       </span>
                     )}
                   </FormLabel>
@@ -424,18 +427,25 @@ export const PackPricingSection = React.memo(({
                         step="any"
                         placeholder="0"
                         {...field}
-                        value={currentVal}
+                        value={displayVal}
+                        onFocus={e => e.target.select()}
                         onChange={e => {
                           if (isPacksFromBatches) return;
-                          const val = e.target.value === '' ? null : Number(e.target.value);
+                          let raw = e.target.value;
+                          if (/^0\d+/.test(raw)) {
+                            raw = raw.replace(/^0+/, '');
+                            e.target.value = raw;
+                          }
+                          const val = raw === '' ? null : Number(raw);
                           field.onChange(val);
-                          handlePackCalculationSync(packSize ? Number(packSize) : null, packPurchaseCost ? Number(packPurchaseCost) : null, val, 'packQty');
+                          handlePackCalculationSync(packSize ? Number(packSize) : null, packPurchaseCost ? Number(packPurchaseCost) : null, val ?? 0, 'packQty');
                         }}
                         readOnly={isPacksFromBatches}
                         disabled={isPacksFromBatches}
                         className={cn(
                           "h-9 text-xs font-semibold pl-3 pr-9 transition-colors",
                           !isPacksFromBatches && numVal > 0 && "border-primary/50 bg-primary/[0.03] focus-visible:border-primary",
+                          !isPacksFromBatches && numVal === 0 && Boolean(packPurchaseCost && Number(packPurchaseCost) > 0) && "border-amber-300/80 bg-amber-500/[0.03] focus-visible:border-amber-400",
                           isPacksFromBatches && "bg-muted/60 text-muted-foreground cursor-not-allowed"
                         )}
                       />
@@ -470,6 +480,13 @@ export const PackPricingSection = React.memo(({
                           {q === 0 ? '0 (Out)' : q}
                         </button>
                       ))}
+                    </div>
+                  )}
+
+                  {!isPacksFromBatches && !isMultiSupplier && Boolean(packPurchaseCost && Number(packPurchaseCost) > 0) && numVal === 0 && (
+                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg border border-amber-200/80 dark:border-amber-800/60 bg-amber-50/50 dark:bg-amber-950/20 text-amber-800 dark:text-amber-300 text-[10.5px]">
+                      <Info className="h-3 w-3 shrink-0 text-amber-600 dark:text-amber-400" />
+                      <span>Starts with <strong>0 stock</strong>. Pick a quick count or type packs above.</span>
                     </div>
                   )}
 
