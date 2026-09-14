@@ -3,7 +3,7 @@ import { useLocation, useParams } from 'wouter';
 import { addMonths, format as formatDate, parseISO } from 'date-fns';
 import { usePurchases, useSuppliers, useInventory, useProductBatches, useLocations } from '@/contexts/GlobalProviders';
 import { useStorageProvider } from '@/storage/StorageContext';
-import { useSmartBack } from '@/contexts/NavigationContext';
+import { useSmartBack, useBackModal } from '@/contexts/NavigationContext';
 import { useCurrency } from '@/hooks/useCurrency';
 import { useApp } from '@/contexts/AppContext';
 import { Card, CardContent } from '@/components/ui/card';
@@ -31,6 +31,9 @@ import {
   Hash,
   Sparkles,
   PieChart,
+  ChevronDown,
+  ChevronUp,
+  ChevronRight,
 } from 'lucide-react';
 import { toast } from 'sonner';
 import { PurchaseItem, PurchasePaymentStatus, PurchaseStatus } from '@/types';
@@ -51,6 +54,480 @@ type DraftItem = PurchaseItem & {
   expiryDate?: string | null;
   entryMode?: 'pack' | 'base';
 };
+
+interface PurchaseSummaryViewProps {
+  isDrawer?: boolean;
+  items: DraftItem[];
+  subtotal: number;
+  discountMode: 'amount' | 'percent';
+  setDiscountMode: (mode: 'amount' | 'percent') => void;
+  discountAmount: string;
+  setDiscountAmount: (val: string) => void;
+  discountPercent: string;
+  setDiscountPercent: (val: string) => void;
+  discountValue: number;
+  taxMode: 'amount' | 'percent';
+  setTaxMode: (mode: 'amount' | 'percent') => void;
+  taxAmount: string;
+  setTaxAmount: (val: string) => void;
+  taxPercent: string;
+  setTaxPercent: (val: string) => void;
+  taxValue: number;
+  taxableAmount: number;
+  grandTotal: number;
+  paymentMethod: string;
+  setPaymentMethod: (method: any) => void;
+  paymentStatus: PurchasePaymentStatus;
+  setPaymentStatus: (status: PurchasePaymentStatus) => void;
+  paidAmount: string;
+  setPaidAmount: (val: string) => void;
+  saving: boolean;
+  status: PurchaseStatus;
+  selectedSupplierName?: string;
+  format: (amount: number) => string;
+  settingsTaxRate?: number;
+}
+
+function PurchaseSummaryView({
+  isDrawer,
+  items,
+  subtotal,
+  discountMode,
+  setDiscountMode,
+  discountAmount,
+  setDiscountAmount,
+  discountPercent,
+  setDiscountPercent,
+  discountValue,
+  taxMode,
+  setTaxMode,
+  taxAmount,
+  setTaxAmount,
+  taxPercent,
+  setTaxPercent,
+  taxValue,
+  taxableAmount,
+  grandTotal,
+  paymentMethod,
+  setPaymentMethod,
+  paymentStatus,
+  setPaymentStatus,
+  paidAmount,
+  setPaidAmount,
+  saving,
+  status,
+  selectedSupplierName,
+  format,
+  settingsTaxRate = 13,
+}: PurchaseSummaryViewProps) {
+  return (
+    <div className="space-y-4">
+      {/* Header (Desktop only) */}
+      {!isDrawer && (
+        <div className="flex items-center justify-between border-b pb-3">
+          <div className="flex items-center gap-2">
+            <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+              <Receipt className="h-4 w-4" />
+            </div>
+            <div>
+              <h2 className="font-bold text-base leading-none">Purchase Summary</h2>
+              <p className="text-[11px] text-muted-foreground mt-0.5">Payment & tax breakdown</p>
+            </div>
+          </div>
+          <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
+            {items.length} {items.length === 1 ? 'item' : 'items'}
+          </span>
+        </div>
+      )}
+
+      {/* Subtotal Row */}
+      <div className="flex justify-between items-center text-sm py-0.5">
+        <span className="text-muted-foreground font-medium">Subtotal</span>
+        <span className="font-bold text-foreground tabular-nums text-base">{format(subtotal)}</span>
+      </div>
+
+      {/* Discount Section */}
+      <div className="space-y-2 rounded-xl bg-muted/40 p-3 border border-border/60">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <Tag className="h-3.5 w-3.5 text-primary" /> Discount
+          </span>
+          {/* Mode Toggle: Rs. vs % */}
+          <div className="inline-flex rounded-lg border bg-background p-0.5 text-xs font-medium shadow-2xs">
+            <button
+              type="button"
+              onClick={() => {
+                if (discountMode !== 'amount') {
+                  setDiscountMode('amount');
+                  setDiscountAmount(String(discountValue));
+                }
+              }}
+              className={cn(
+                'px-2 py-0.5 rounded-md transition-all text-[11px]',
+                discountMode === 'amount'
+                  ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              Rs.
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (discountMode !== 'percent') {
+                  setDiscountMode('percent');
+                  const pct = subtotal > 0 ? ((discountValue / subtotal) * 100).toFixed(1) : '0';
+                  setDiscountPercent(pct);
+                }
+              }}
+              className={cn(
+                'px-2 py-0.5 rounded-md transition-all text-[11px]',
+                discountMode === 'percent'
+                  ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              %
+            </button>
+          </div>
+        </div>
+
+        {/* Input with inline preview */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground select-none pointer-events-none">
+              {discountMode === 'amount' ? 'Rs.' : '%'}
+            </span>
+            <Input
+              type="number"
+              min="0"
+              step={discountMode === 'amount' ? '0.01' : '0.1'}
+              value={discountMode === 'amount' ? discountAmount : discountPercent}
+              onFocus={e => e.target.select()}
+              onChange={e => {
+                const val = e.target.value;
+                if (discountMode === 'amount') {
+                  setDiscountAmount(val);
+                } else {
+                  setDiscountPercent(val);
+                }
+              }}
+              placeholder="0"
+              className="pl-8 h-9 text-xs font-medium text-right pr-2.5 bg-background"
+            />
+          </div>
+          <div className="text-right min-w-[75px]">
+            <span className={cn('text-xs font-bold tabular-nums', discountValue > 0 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground')}>
+              -{format(discountValue)}
+            </span>
+            {discountMode === 'amount' && subtotal > 0 && discountValue > 0 && (
+              <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
+                ({((discountValue / subtotal) * 100).toFixed(1)}%)
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Quick presets */}
+        {discountMode === 'percent' ? (
+          <div className="flex items-center gap-1 pt-0.5">
+            <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Quick:</span>
+            {[0, 5, 10, 15, 20].map(pct => (
+              <button
+                key={pct}
+                type="button"
+                onClick={() => setDiscountPercent(String(pct))}
+                className={cn(
+                  'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
+                  Number(discountPercent) === pct
+                    ? 'bg-primary text-primary-foreground font-semibold border-primary'
+                    : 'bg-background hover:bg-muted text-muted-foreground border-border'
+                )}
+              >
+                {pct}%
+              </button>
+            ))}
+          </div>
+        ) : (
+          <div className="flex items-center gap-1 pt-0.5">
+            <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Quick:</span>
+            {[0, 100, 250, 500, 1000].map(amt => (
+              <button
+                key={amt}
+                type="button"
+                onClick={() => setDiscountAmount(String(amt))}
+                className={cn(
+                  'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
+                  Number(discountAmount) === amt
+                    ? 'bg-primary text-primary-foreground font-semibold border-primary'
+                    : 'bg-background hover:bg-muted text-muted-foreground border-border'
+                )}
+              >
+                {amt === 0 ? 'Clear' : `Rs.${amt}`}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Tax Section */}
+      <div className="space-y-2 rounded-xl bg-muted/40 p-3 border border-border/60">
+        <div className="flex items-center justify-between">
+          <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+            <Percent className="h-3.5 w-3.5 text-primary" /> Tax / VAT
+          </span>
+          {/* Mode Toggle: Rs. vs % */}
+          <div className="inline-flex rounded-lg border bg-background p-0.5 text-xs font-medium shadow-2xs">
+            <button
+              type="button"
+              onClick={() => {
+                if (taxMode !== 'amount') {
+                  setTaxMode('amount');
+                  setTaxAmount(String(taxValue));
+                }
+              }}
+              className={cn(
+                'px-2 py-0.5 rounded-md transition-all text-[11px]',
+                taxMode === 'amount'
+                  ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              Rs.
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                if (taxMode !== 'percent') {
+                  setTaxMode('percent');
+                  const base = Math.max(0, subtotal - discountValue);
+                  const pct = base > 0 ? ((taxValue / base) * 100).toFixed(1) : String(settingsTaxRate || 13);
+                  setTaxPercent(pct);
+                }
+              }}
+              className={cn(
+                'px-2 py-0.5 rounded-md transition-all text-[11px]',
+                taxMode === 'percent'
+                  ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground'
+              )}
+            >
+              %
+            </button>
+          </div>
+        </div>
+
+        {/* Input with inline preview */}
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1">
+            <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground select-none pointer-events-none">
+              {taxMode === 'amount' ? 'Rs.' : '%'}
+            </span>
+            <Input
+              type="number"
+              min="0"
+              step={taxMode === 'amount' ? '0.01' : '0.1'}
+              value={taxMode === 'amount' ? taxAmount : taxPercent}
+              onFocus={e => e.target.select()}
+              onChange={e => {
+                const val = e.target.value;
+                if (taxMode === 'amount') {
+                  setTaxAmount(val);
+                } else {
+                  setTaxPercent(val);
+                }
+              }}
+              placeholder="0"
+              className="pl-8 h-9 text-xs font-medium text-right pr-2.5 bg-background"
+            />
+          </div>
+          <div className="text-right min-w-[75px]">
+            <span className="text-xs font-bold tabular-nums text-foreground">
+              +{format(taxValue)}
+            </span>
+            {taxMode === 'amount' && taxableAmount > 0 && taxValue > 0 && (
+              <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
+                ({((taxValue / taxableAmount) * 100).toFixed(1)}%)
+              </p>
+            )}
+          </div>
+        </div>
+
+        {/* Quick presets for tax */}
+        {taxMode === 'percent' && (
+          <div className="flex items-center gap-1 pt-0.5">
+            <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Quick:</span>
+            {[
+              { label: '0%', val: 0 },
+              { label: '5%', val: 5 },
+              { label: `${settingsTaxRate || 13}% VAT`, val: settingsTaxRate || 13 },
+            ].map(preset => (
+              <button
+                key={preset.val}
+                type="button"
+                onClick={() => setTaxPercent(String(preset.val))}
+                className={cn(
+                  'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
+                  Number(taxPercent) === preset.val
+                    ? 'bg-primary text-primary-foreground font-semibold border-primary'
+                    : 'bg-background hover:bg-muted text-muted-foreground border-border'
+                )}
+              >
+                {preset.label}
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Grand Total Box */}
+      <div className="rounded-2xl bg-primary/[0.06] dark:bg-primary/[0.12] border border-primary/25 p-4 space-y-1">
+        <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
+          <span>Grand Total</span>
+          {items.length > 0 && (
+            <span className="text-[10px] font-normal text-primary">
+              {items.reduce((s, i) => s + (Number(i.quantity) || 0), 0)} units total
+            </span>
+          )}
+        </div>
+        <div className="text-2xl font-black text-primary tracking-tight tabular-nums">
+          {format(grandTotal)}
+        </div>
+      </div>
+
+      {/* Payment Method - using PaymentMethodPicker */}
+      <div className="border-t pt-3 space-y-3">
+        <PaymentMethodPicker
+          label="Payment Method"
+          selectedMethod={paymentMethod}
+          onSelect={setPaymentMethod}
+          methods={['cash', 'qr', 'card', 'bank', 'split', 'other']}
+        />
+
+        {/* Payment Status Segmented Picker */}
+        <div className="space-y-2 pt-1">
+          <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider block">
+            Payment Status
+          </label>
+          <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-muted/60 border">
+            <button
+              type="button"
+              onClick={() => setPaymentStatus('unpaid')}
+              className={cn(
+                'py-2 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-0.5',
+                paymentStatus === 'unpaid'
+                  ? 'bg-amber-600 text-white shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+              )}
+            >
+              <span>Unpaid</span>
+              <span className="text-[9px] opacity-85 font-normal">On Credit</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setPaymentStatus('partial');
+                if (!paidAmount || Number(paidAmount) === 0) {
+                  setPaidAmount(String(safeCurrency(grandTotal / 2)));
+                }
+              }}
+              className={cn(
+                'py-2 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-0.5',
+                paymentStatus === 'partial'
+                  ? 'bg-blue-600 text-white shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+              )}
+            >
+              <span>Partial</span>
+              <span className="text-[9px] opacity-85 font-normal">Split / Due</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setPaymentStatus('paid')}
+              className={cn(
+                'py-2 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-0.5',
+                paymentStatus === 'paid'
+                  ? 'bg-green-600 text-white shadow-xs'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
+              )}
+            >
+              <span>Paid</span>
+              <span className="text-[9px] opacity-85 font-normal">In Full</span>
+            </button>
+          </div>
+
+          {/* Status-specific breakdown & Partial input */}
+          {paymentStatus === 'partial' ? (
+            <div className="space-y-2 rounded-xl border p-3 bg-muted/30">
+              <div className="flex items-center justify-between text-xs font-medium">
+                <span className="text-muted-foreground">Amount Paid</span>
+                <span className="text-blue-600 dark:text-blue-400 font-semibold tabular-nums">
+                  Due: {format(Math.max(0, grandTotal - (Number(paidAmount) || 0)))}
+                </span>
+              </div>
+              <div className="relative">
+                <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground pointer-events-none select-none">
+                  Rs.
+                </span>
+                <Input
+                  type="number"
+                  min="0"
+                  max={grandTotal}
+                  step="0.01"
+                  value={paidAmount}
+                  onFocus={e => e.target.select()}
+                  onChange={event => setPaidAmount(event.target.value)}
+                  className="pl-9 h-9 text-xs font-semibold bg-background"
+                />
+              </div>
+              {/* Quick partial chips */}
+              <div className="flex items-center gap-1 pt-0.5">
+                <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Preset:</span>
+                {[
+                  { label: '25%', factor: 0.25 },
+                  { label: '50%', factor: 0.5 },
+                  { label: '75%', factor: 0.75 },
+                ].map(preset => (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => setPaidAmount(String(safeCurrency(grandTotal * preset.factor)))}
+                    className="text-[10px] px-2 py-0.5 rounded border bg-background hover:bg-muted text-muted-foreground"
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : paymentStatus === 'unpaid' ? (
+            <div className="rounded-xl border border-amber-200/60 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/50 p-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
+              <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
+              <div>
+                <p className="font-semibold leading-tight">Supplier Payable</p>
+                <p className="text-[11px] opacity-90 mt-0.5">
+                  Full {format(grandTotal)} will be added to {selectedSupplierName ? `${selectedSupplierName}'s` : "supplier's"} credit balance.
+                </p>
+              </div>
+            </div>
+          ) : (
+            <div className="rounded-xl border border-green-200/60 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900/50 p-2.5 text-xs text-green-800 dark:text-green-300 flex items-center gap-2">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
+              <span className="font-medium text-[11px]">Paid in full via {paymentMethod.toUpperCase()}</span>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Submit CTA */}
+      <Button type="submit" size="lg" className="w-full h-12 text-sm font-semibold rounded-xl shadow-sm transition-all" disabled={saving}>
+        <Save className="h-4 w-4 mr-2" /> {saving ? 'Saving…' : status === 'received' ? 'Save & receive stock' : 'Save draft'}
+      </Button>
+      <p className="text-[11px] text-center text-muted-foreground leading-snug">
+        Received purchases automatically update inventory stock, location stock, and supplier costs.
+      </p>
+    </div>
+  );
+}
 
 const today = () => new Date().toLocaleDateString('en-CA');
 
@@ -102,6 +579,11 @@ export default function PurchaseForm() {
   const [supplierDialogOpen, setSupplierDialogOpen] = useState(false);
   const [supplierPresetName, setSupplierPresetName] = useState('');
   const [saving, setSaving] = useState(false);
+
+  // Mobile layout state
+  const [mobileDetailsOpen, setMobileDetailsOpen] = useState(false);
+  const [mobileSummaryOpen, setMobileSummaryOpen] = useState(false);
+  useBackModal(mobileSummaryOpen, () => setMobileSummaryOpen(false), 'purchase-mobile-summary');
 
   useEffect(() => {
     if (productIdFromQuery && !items.some(item => item.productId === productIdFromQuery)) {
@@ -514,7 +996,42 @@ export default function PurchaseForm() {
                 }}
               />
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2">
+              {/* Mobile Compact Invoice Details Pill (visible only on mobile sm:hidden) */}
+              <div className="sm:hidden pt-1">
+                <button
+                  type="button"
+                  onClick={() => setMobileDetailsOpen(prev => !prev)}
+                  className="w-full flex items-center justify-between p-2.5 rounded-xl border bg-muted/40 hover:bg-muted/60 active:scale-[0.99] transition-all text-xs"
+                >
+                  <div className="flex items-center gap-2 min-w-0">
+                    <Calendar className="h-3.5 w-3.5 text-primary shrink-0" />
+                    <span className="font-medium text-foreground truncate">
+                      {purchaseDate || 'Today'}
+                    </span>
+                    <span className="text-muted-foreground">•</span>
+                    <span className="text-muted-foreground truncate">
+                      {invoiceNumber || 'No Inv#'}
+                    </span>
+                    <span className="text-muted-foreground">•</span>
+                    <span
+                      className={cn(
+                        'px-1.5 py-0.5 rounded text-[10px] font-semibold uppercase',
+                        status === 'received'
+                          ? 'bg-green-100 text-green-800 dark:bg-green-950/60 dark:text-green-300'
+                          : 'bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300'
+                      )}
+                    >
+                      {status}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 text-primary font-semibold shrink-0 ml-2">
+                    <span className="text-[11px]">{mobileDetailsOpen ? 'Hide' : 'Details'}</span>
+                    {mobileDetailsOpen ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+                  </div>
+                </button>
+              </div>
+
+              <div className={cn("grid grid-cols-1 sm:grid-cols-2 gap-4 pt-2", !mobileDetailsOpen && "hidden sm:grid")}>
                 <label className="space-y-1.5 text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   <span className="flex items-center gap-1.5">
                     <Calendar className="h-3.5 w-3.5 text-primary" /> Purchase Date
@@ -833,414 +1350,161 @@ export default function PurchaseForm() {
           </Card>
         </div>
 
-        {/* ── Sidebar: Purchase summary ──────────────── */}
-        <div>
-          <Card className="lg:sticky lg:top-20 shadow-sm border-border/80 rounded-2xl overflow-hidden">
+        {/* ── Sidebar: Purchase summary (Desktop) ─────────── */}
+        <div className="hidden lg:block">
+          <Card className="sticky top-20 shadow-sm border-border/80 rounded-2xl overflow-hidden">
             <CardContent className="p-4 md:p-5 space-y-4">
-              {/* Header */}
-              <div className="flex items-center justify-between border-b pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
-                    <Receipt className="h-4 w-4" />
-                  </div>
-                  <div>
-                    <h2 className="font-bold text-base leading-none">Purchase Summary</h2>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">Payment & tax breakdown</p>
-                  </div>
-                </div>
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-muted text-muted-foreground">
-                  {items.length} {items.length === 1 ? 'item' : 'items'}
-                </span>
-              </div>
-
-              {/* Subtotal Row */}
-              <div className="flex justify-between items-center text-sm py-0.5">
-                <span className="text-muted-foreground font-medium">Subtotal</span>
-                <span className="font-bold text-foreground tabular-nums text-base">{format(subtotal)}</span>
-              </div>
-
-              {/* Discount Section */}
-              <div className="space-y-2 rounded-xl bg-muted/40 p-3 border border-border/60">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Tag className="h-3.5 w-3.5 text-primary" /> Discount
-                  </span>
-                  {/* Mode Toggle: Rs. vs % */}
-                  <div className="inline-flex rounded-lg border bg-background p-0.5 text-xs font-medium shadow-2xs">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (discountMode !== 'amount') {
-                          setDiscountMode('amount');
-                          setDiscountAmount(String(discountValue));
-                        }
-                      }}
-                      className={cn(
-                        'px-2 py-0.5 rounded-md transition-all text-[11px]',
-                        discountMode === 'amount'
-                          ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      Rs.
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (discountMode !== 'percent') {
-                          setDiscountMode('percent');
-                          const pct = subtotal > 0 ? ((discountValue / subtotal) * 100).toFixed(1) : '0';
-                          setDiscountPercent(pct);
-                        }
-                      }}
-                      className={cn(
-                        'px-2 py-0.5 rounded-md transition-all text-[11px]',
-                        discountMode === 'percent'
-                          ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      %
-                    </button>
-                  </div>
-                </div>
-
-                {/* Input with inline preview */}
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground select-none pointer-events-none">
-                      {discountMode === 'amount' ? 'Rs.' : '%'}
-                    </span>
-                    <Input
-                      type="number"
-                      min="0"
-                      step={discountMode === 'amount' ? '0.01' : '0.1'}
-                      value={discountMode === 'amount' ? discountAmount : discountPercent}
-                      onFocus={e => e.target.select()}
-                      onChange={e => {
-                        const val = e.target.value;
-                        if (discountMode === 'amount') {
-                          setDiscountAmount(val);
-                        } else {
-                          setDiscountPercent(val);
-                        }
-                      }}
-                      placeholder="0"
-                      className="pl-8 h-9 text-xs font-medium text-right pr-2.5 bg-background"
-                    />
-                  </div>
-                  <div className="text-right min-w-[75px]">
-                    <span className={cn('text-xs font-bold tabular-nums', discountValue > 0 ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground')}>
-                      -{format(discountValue)}
-                    </span>
-                    {discountMode === 'amount' && subtotal > 0 && discountValue > 0 && (
-                      <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
-                        ({((discountValue / subtotal) * 100).toFixed(1)}%)
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Quick presets */}
-                {discountMode === 'percent' ? (
-                  <div className="flex items-center gap-1 pt-0.5">
-                    <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Quick:</span>
-                    {[0, 5, 10, 15, 20].map(pct => (
-                      <button
-                        key={pct}
-                        type="button"
-                        onClick={() => setDiscountPercent(String(pct))}
-                        className={cn(
-                          'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
-                          Number(discountPercent) === pct
-                            ? 'bg-primary text-primary-foreground font-semibold border-primary'
-                            : 'bg-background hover:bg-muted text-muted-foreground border-border'
-                        )}
-                      >
-                        {pct}%
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-1 pt-0.5">
-                    <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Quick:</span>
-                    {[0, 100, 250, 500, 1000].map(amt => (
-                      <button
-                        key={amt}
-                        type="button"
-                        onClick={() => setDiscountAmount(String(amt))}
-                        className={cn(
-                          'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
-                          Number(discountAmount) === amt
-                            ? 'bg-primary text-primary-foreground font-semibold border-primary'
-                            : 'bg-background hover:bg-muted text-muted-foreground border-border'
-                        )}
-                      >
-                        {amt === 0 ? 'Clear' : `Rs.${amt}`}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Tax Section */}
-              <div className="space-y-2 rounded-xl bg-muted/40 p-3 border border-border/60">
-                <div className="flex items-center justify-between">
-                  <span className="text-xs font-semibold text-foreground flex items-center gap-1.5">
-                    <Percent className="h-3.5 w-3.5 text-primary" /> Tax / VAT
-                  </span>
-                  {/* Mode Toggle: Rs. vs % */}
-                  <div className="inline-flex rounded-lg border bg-background p-0.5 text-xs font-medium shadow-2xs">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (taxMode !== 'amount') {
-                          setTaxMode('amount');
-                          setTaxAmount(String(taxValue));
-                        }
-                      }}
-                      className={cn(
-                        'px-2 py-0.5 rounded-md transition-all text-[11px]',
-                        taxMode === 'amount'
-                          ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      Rs.
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        if (taxMode !== 'percent') {
-                          setTaxMode('percent');
-                          const base = Math.max(0, subtotal - discountValue);
-                          const pct = base > 0 ? ((taxValue / base) * 100).toFixed(1) : String(settings.taxRate || 13);
-                          setTaxPercent(pct);
-                        }
-                      }}
-                      className={cn(
-                        'px-2 py-0.5 rounded-md transition-all text-[11px]',
-                        taxMode === 'percent'
-                          ? 'bg-primary text-primary-foreground font-semibold shadow-xs'
-                          : 'text-muted-foreground hover:text-foreground'
-                      )}
-                    >
-                      %
-                    </button>
-                  </div>
-                </div>
-
-                {/* Input with inline preview */}
-                <div className="flex items-center gap-2">
-                  <div className="relative flex-1">
-                    <span className="absolute left-2.5 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground select-none pointer-events-none">
-                      {taxMode === 'amount' ? 'Rs.' : '%'}
-                    </span>
-                    <Input
-                      type="number"
-                      min="0"
-                      step={taxMode === 'amount' ? '0.01' : '0.1'}
-                      value={taxMode === 'amount' ? taxAmount : taxPercent}
-                      onFocus={e => e.target.select()}
-                      onChange={e => {
-                        const val = e.target.value;
-                        if (taxMode === 'amount') {
-                          setTaxAmount(val);
-                        } else {
-                          setTaxPercent(val);
-                        }
-                      }}
-                      placeholder="0"
-                      className="pl-8 h-9 text-xs font-medium text-right pr-2.5 bg-background"
-                    />
-                  </div>
-                  <div className="text-right min-w-[75px]">
-                    <span className="text-xs font-bold tabular-nums text-foreground">
-                      +{format(taxValue)}
-                    </span>
-                    {taxMode === 'amount' && taxableAmount > 0 && taxValue > 0 && (
-                      <p className="text-[10px] text-muted-foreground leading-none mt-0.5">
-                        ({((taxValue / taxableAmount) * 100).toFixed(1)}%)
-                      </p>
-                    )}
-                  </div>
-                </div>
-
-                {/* Quick presets for tax */}
-                {taxMode === 'percent' && (
-                  <div className="flex items-center gap-1 pt-0.5">
-                    <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Quick:</span>
-                    {[
-                      { label: '0%', val: 0 },
-                      { label: '5%', val: 5 },
-                      { label: '13% VAT', val: 13 },
-                    ].map(preset => (
-                      <button
-                        key={preset.val}
-                        type="button"
-                        onClick={() => setTaxPercent(String(preset.val))}
-                        className={cn(
-                          'text-[10px] px-1.5 py-0.5 rounded border transition-colors',
-                          Number(taxPercent) === preset.val
-                            ? 'bg-primary text-primary-foreground font-semibold border-primary'
-                            : 'bg-background hover:bg-muted text-muted-foreground border-border'
-                        )}
-                      >
-                        {preset.label}
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Grand Total Box */}
-              <div className="rounded-2xl bg-primary/[0.06] dark:bg-primary/[0.12] border border-primary/25 p-4 space-y-1">
-                <div className="flex items-center justify-between text-xs font-semibold text-muted-foreground">
-                  <span>Grand Total</span>
-                  {items.length > 0 && (
-                    <span className="text-[10px] font-normal text-primary">
-                      {items.reduce((s, i) => s + (Number(i.quantity) || 0), 0)} units total
-                    </span>
-                  )}
-                </div>
-                <div className="text-2xl font-black text-primary tracking-tight tabular-nums">
-                  {format(grandTotal)}
-                </div>
-              </div>
-
-              {/* Payment Method - using PaymentMethodPicker */}
-              <div className="border-t pt-3 space-y-3">
-                <PaymentMethodPicker
-                  label="Payment Method"
-                  selectedMethod={paymentMethod}
-                  onSelect={setPaymentMethod}
-                  methods={['cash', 'qr', 'card', 'bank', 'split', 'other']}
-                />
-
-                {/* Payment Status Segmented Picker */}
-                <div className="space-y-2 pt-1">
-                  <label className="text-xs text-muted-foreground font-semibold uppercase tracking-wider block">
-                    Payment Status
-                  </label>
-                  <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-muted/60 border">
-                    <button
-                      type="button"
-                      onClick={() => setPaymentStatus('unpaid')}
-                      className={cn(
-                        'py-2 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-0.5',
-                        paymentStatus === 'unpaid'
-                          ? 'bg-amber-600 text-white shadow-xs'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                      )}
-                    >
-                      <span>Unpaid</span>
-                      <span className="text-[9px] opacity-85 font-normal">On Credit</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setPaymentStatus('partial');
-                        if (!paidAmount || Number(paidAmount) === 0) {
-                          setPaidAmount(String(safeCurrency(grandTotal / 2)));
-                        }
-                      }}
-                      className={cn(
-                        'py-2 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-0.5',
-                        paymentStatus === 'partial'
-                          ? 'bg-blue-600 text-white shadow-xs'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                      )}
-                    >
-                      <span>Partial</span>
-                      <span className="text-[9px] opacity-85 font-normal">Split / Due</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPaymentStatus('paid')}
-                      className={cn(
-                        'py-2 text-xs font-semibold rounded-lg transition-all flex flex-col items-center justify-center gap-0.5',
-                        paymentStatus === 'paid'
-                          ? 'bg-green-600 text-white shadow-xs'
-                          : 'text-muted-foreground hover:text-foreground hover:bg-background/50'
-                      )}
-                    >
-                      <span>Paid</span>
-                      <span className="text-[9px] opacity-85 font-normal">In Full</span>
-                    </button>
-                  </div>
-
-                  {/* Status-specific breakdown & Partial input */}
-                  {paymentStatus === 'partial' ? (
-                    <div className="space-y-2 rounded-xl border p-3 bg-muted/30">
-                      <div className="flex items-center justify-between text-xs font-medium">
-                        <span className="text-muted-foreground">Amount Paid</span>
-                        <span className="text-blue-600 dark:text-blue-400 font-semibold tabular-nums">
-                          Due: {format(Math.max(0, grandTotal - (Number(paidAmount) || 0)))}
-                        </span>
-                      </div>
-                      <div className="relative">
-                        <span className="absolute left-3 top-1/2 -translate-y-1/2 text-xs font-semibold text-muted-foreground pointer-events-none select-none">
-                          Rs.
-                        </span>
-                        <Input
-                          type="number"
-                          min="0"
-                          max={grandTotal}
-                          step="0.01"
-                          value={paidAmount}
-                          onFocus={e => e.target.select()}
-                          onChange={event => setPaidAmount(event.target.value)}
-                          className="pl-9 h-9 text-xs font-semibold bg-background"
-                        />
-                      </div>
-                      {/* Quick partial chips */}
-                      <div className="flex items-center gap-1 pt-0.5">
-                        <span className="text-[10px] text-muted-foreground mr-0.5 font-medium">Preset:</span>
-                        {[
-                          { label: '25%', factor: 0.25 },
-                          { label: '50%', factor: 0.5 },
-                          { label: '75%', factor: 0.75 },
-                        ].map(preset => (
-                          <button
-                            key={preset.label}
-                            type="button"
-                            onClick={() => setPaidAmount(String(safeCurrency(grandTotal * preset.factor)))}
-                            className="text-[10px] px-2 py-0.5 rounded border bg-background hover:bg-muted text-muted-foreground"
-                          >
-                            {preset.label}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : paymentStatus === 'unpaid' ? (
-                    <div className="rounded-xl border border-amber-200/60 bg-amber-50/50 dark:bg-amber-950/20 dark:border-amber-900/50 p-2.5 text-xs text-amber-800 dark:text-amber-300 flex items-start gap-2">
-                      <AlertCircle className="h-4 w-4 shrink-0 text-amber-600 mt-0.5" />
-                      <div>
-                        <p className="font-semibold leading-tight">Supplier Payable</p>
-                        <p className="text-[11px] opacity-90 mt-0.5">
-                          Full {format(grandTotal)} will be added to {selectedSupplier?.name ? `${selectedSupplier.name}'s` : "supplier's"} credit balance.
-                        </p>
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="rounded-xl border border-green-200/60 bg-green-50/50 dark:bg-green-950/20 dark:border-green-900/50 p-2.5 text-xs text-green-800 dark:text-green-300 flex items-center gap-2">
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-green-600" />
-                      <span className="font-medium text-[11px]">Paid in full via {paymentMethod.toUpperCase()}</span>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Submit CTA */}
-              <Button type="submit" size="lg" className="w-full h-12 text-sm font-semibold rounded-xl shadow-sm transition-all" disabled={saving}>
-                <Save className="h-4 w-4 mr-2" /> {saving ? 'Saving…' : status === 'received' ? 'Save & receive stock' : 'Save draft'}
-              </Button>
-              <p className="text-[11px] text-center text-muted-foreground leading-snug">
-                Received purchases automatically update inventory stock, location stock, and supplier costs.
-              </p>
+              <PurchaseSummaryView
+                items={items}
+                subtotal={subtotal}
+                discountMode={discountMode}
+                setDiscountMode={setDiscountMode}
+                discountAmount={discountAmount}
+                setDiscountAmount={setDiscountAmount}
+                discountPercent={discountPercent}
+                setDiscountPercent={setDiscountPercent}
+                discountValue={discountValue}
+                taxMode={taxMode}
+                setTaxMode={setTaxMode}
+                taxAmount={taxAmount}
+                setTaxAmount={setTaxAmount}
+                taxPercent={taxPercent}
+                setTaxPercent={setTaxPercent}
+                taxValue={taxValue}
+                taxableAmount={taxableAmount}
+                grandTotal={grandTotal}
+                paymentMethod={paymentMethod}
+                setPaymentMethod={setPaymentMethod}
+                paymentStatus={paymentStatus}
+                setPaymentStatus={setPaymentStatus}
+                paidAmount={paidAmount}
+                setPaidAmount={setPaidAmount}
+                saving={saving}
+                status={status}
+                selectedSupplierName={selectedSupplier?.name}
+                format={format}
+                settingsTaxRate={settings.taxRate}
+              />
             </CardContent>
           </Card>
         </div>
+
+        {/* Mobile Sticky Floating Summary & Action Bar */}
+        <div className="fixed bottom-0 inset-x-0 z-30 lg:hidden border-t bg-background/95 backdrop-blur-md px-4 py-2.5 shadow-[0_-4px_20px_rgba(0,0,0,0.08)]">
+          <div className="flex items-center justify-between gap-3 max-w-lg mx-auto">
+            <button
+              type="button"
+              onClick={() => setMobileSummaryOpen(true)}
+              className="flex flex-col text-left focus:outline-hidden group"
+            >
+              <div className="flex items-center gap-1.5 text-xs text-muted-foreground font-medium">
+                <span className="font-semibold text-foreground">
+                  {items.length} {items.length === 1 ? 'item' : 'items'}
+                </span>
+                <span>•</span>
+                <span className="text-primary font-semibold flex items-center gap-0.5 group-hover:underline">
+                  Summary <ChevronUp className="h-3.5 w-3.5 inline transition-transform group-hover:-translate-y-0.5" />
+                </span>
+              </div>
+              <div className="text-lg font-black text-foreground tracking-tight tabular-nums">
+                {format(grandTotal)}
+              </div>
+            </button>
+            <Button
+              type="button"
+              size="default"
+              onClick={() => setMobileSummaryOpen(true)}
+              className="h-10 px-4 rounded-xl font-bold shadow-md shadow-primary/20 flex items-center gap-2"
+            >
+              <Receipt className="h-4 w-4" />
+              <span>Review & Pay</span>
+            </Button>
+          </div>
+        </div>
+
+        {/* Mobile Bottom Sheet Drawer */}
+        {mobileSummaryOpen && (
+          <div className="fixed inset-0 z-50 lg:hidden">
+            {/* Backdrop */}
+            <div
+              className="fixed inset-0 bg-black/60 backdrop-blur-xs transition-opacity animate-in fade-in duration-200"
+              onClick={() => setMobileSummaryOpen(false)}
+              aria-hidden="true"
+            />
+
+            {/* Bottom Sheet Modal */}
+            <div className="fixed inset-x-0 bottom-0 z-50 max-h-[85vh] rounded-t-3xl bg-background border-t shadow-2xl flex flex-col animate-in slide-in-from-bottom duration-250 ease-out">
+              {/* Drag handle */}
+              <div
+                className="pt-3 pb-1 flex justify-center cursor-pointer touch-none"
+                onClick={() => setMobileSummaryOpen(false)}
+              >
+                <div className="w-12 h-1.5 rounded-full bg-muted-foreground/30 hover:bg-muted-foreground/50 transition-colors" />
+              </div>
+
+              {/* Drawer Header */}
+              <div className="px-5 py-3 border-b flex items-center justify-between">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-9 w-9 rounded-xl bg-primary/10 text-primary flex items-center justify-center">
+                    <Receipt className="h-4.5 w-4.5" />
+                  </div>
+                  <div>
+                    <h3 className="font-bold text-base leading-none">Purchase Summary</h3>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      {items.length} {items.length === 1 ? 'item' : 'items'} • Total: <span className="font-bold text-primary">{format(grandTotal)}</span>
+                    </p>
+                  </div>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 rounded-full"
+                  onClick={() => setMobileSummaryOpen(false)}
+                  aria-label="Close"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </div>
+
+              {/* Drawer Scrollable Content */}
+              <div className="overflow-y-auto px-5 py-4 space-y-4 pb-8">
+                <PurchaseSummaryView
+                  isDrawer
+                  items={items}
+                  subtotal={subtotal}
+                  discountMode={discountMode}
+                  setDiscountMode={setDiscountMode}
+                  discountAmount={discountAmount}
+                  setDiscountAmount={setDiscountAmount}
+                  discountPercent={discountPercent}
+                  setDiscountPercent={setDiscountPercent}
+                  discountValue={discountValue}
+                  taxMode={taxMode}
+                  setTaxMode={setTaxMode}
+                  taxAmount={taxAmount}
+                  setTaxAmount={setTaxAmount}
+                  taxPercent={taxPercent}
+                  setTaxPercent={setTaxPercent}
+                  taxValue={taxValue}
+                  taxableAmount={taxableAmount}
+                  grandTotal={grandTotal}
+                  paymentMethod={paymentMethod}
+                  setPaymentMethod={setPaymentMethod}
+                  paymentStatus={paymentStatus}
+                  setPaymentStatus={setPaymentStatus}
+                  paidAmount={paidAmount}
+                  setPaidAmount={setPaidAmount}
+                  saving={saving}
+                  status={status}
+                  selectedSupplierName={selectedSupplier?.name}
+                  format={format}
+                  settingsTaxRate={settings.taxRate}
+                />
+              </div>
+            </div>
+          </div>
+        )}
       </form>
 
       <SupplierFormDialog
