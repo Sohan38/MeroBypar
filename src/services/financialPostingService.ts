@@ -310,6 +310,7 @@ export class FinancialPostingService {
         version?: number;
         invoiceNumber?: string | null;
         supplierName?: string | null;
+        bankAccountId?: string | null;
     }) {
         await this.ensureDefaultAccounts(storage);
         if (purchase.status !== 'received') return null;
@@ -362,6 +363,7 @@ export class FinancialPostingService {
             eventKey: `purchase:${purchase.id}:payment:v${purchase.version ?? 1}`,
             invoiceNumber: purchase.invoiceNumber,
             supplierName: purchase.supplierName,
+            bankAccountId: purchase.bankAccountId,
         });
     }
 

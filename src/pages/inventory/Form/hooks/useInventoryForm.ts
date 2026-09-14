@@ -37,6 +37,7 @@ export type SupplierPurchaseDraft = {
     paymentMethod: PaymentMethod | string;
     paymentStatus: PurchasePaymentStatus;
     paidAmount: string;
+    bankAccountId?: string | null;
     notes: string;
 };
 
@@ -327,6 +328,7 @@ export function useInventoryForm(
                         paymentMethod: existing?.paymentMethod ?? 'cash',
                         paymentStatus: existing?.paymentStatus ?? 'unpaid',
                         paidAmount: existing?.paidAmount ?? '0',
+                        bankAccountId: existing?.bankAccountId ?? null,
                         notes: existing?.notes ?? '',
                     };
                 }
@@ -737,6 +739,7 @@ export function useInventoryForm(
                                     paymentMethod: draft?.paymentMethod || 'cash',
                                     paymentStatus: draft?.paymentStatus || 'unpaid',
                                     paidAmount: Number(draft?.paidAmount || 0),
+                                    bankAccountId: draft?.paymentMethod === 'bank' ? (draft?.bankAccountId || null) : null,
                                 });
                             }
                         } else if (shouldCreateSupplierPurchases) {
@@ -785,6 +788,7 @@ export function useInventoryForm(
                                     paymentMethod: draft?.paymentMethod || 'cash',
                                     paymentStatus: draft?.paymentStatus || 'unpaid',
                                     paidAmount: Number(draft?.paidAmount || 0),
+                                    bankAccountId: draft?.paymentMethod === 'bank' ? (draft?.bankAccountId || null) : null,
                                 });
                             }
                         } else {
@@ -833,6 +837,7 @@ export function useInventoryForm(
                                     paymentMethod: draft?.paymentMethod || 'cash',
                                     paymentStatus: draft?.paymentStatus || 'unpaid',
                                     paidAmount: Number(draft?.paidAmount || 0),
+                                    bankAccountId: draft?.paymentMethod === 'bank' ? (draft?.bankAccountId || null) : null,
                                 });
                             }
                         }

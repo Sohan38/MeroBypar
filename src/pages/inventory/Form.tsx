@@ -64,6 +64,7 @@ export default function InventoryForm() {
     setSupplierDialogOpen,
     supplierPurchaseDrafts,
     updatePurchaseDraft,
+    purchaseSupplierIds,
     isBatchesEnabled,
     isExpiryEnabled,
     isVariantsEnabled,
@@ -81,14 +82,6 @@ export default function InventoryForm() {
     window.addEventListener('resize', handler);
     return () => window.removeEventListener('resize', handler);
   }, []);
-
-  // Derived purchase supplier IDs (fallback to query param)
-  const purchaseSupplierIds =
-    watchedSupplierIds.length > 0
-      ? watchedSupplierIds
-      : supplierIdFromQuery
-        ? [supplierIdFromQuery]
-        : [];
 
   // Step generation & error derivation
   const { stepsWithReview, stepErrorsWithUI } = useInventoryFormSteps(

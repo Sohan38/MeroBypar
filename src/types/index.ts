@@ -366,6 +366,7 @@ export interface PurchaseInvoice extends StorageRecord {
   paidAmount?: number;
   payments?: CreditPayment[];
   locationId?: string; // which location this purchase is for
+  bankAccountId?: string | null; // explicit destination bank account when paymentMethod is bank
 }
 
 export interface SaleCostAllocation {

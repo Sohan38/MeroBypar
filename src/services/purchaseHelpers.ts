@@ -103,6 +103,7 @@ export type CreatePurchaseForNewItemOpts = {
     packCost?: number | null;
     packUnit?: string | null;
     packSize?: number | null;
+    bankAccountId?: string | null;
 };
 
 async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsList: CreatePurchaseForNewItemOpts[]) {
@@ -124,6 +125,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
         paymentMethod?: string;
         paymentStatus?: 'paid' | 'partial' | 'unpaid';
         paidAmount?: number;
+        bankAccountId?: string | null;
     }> = new Map();
 
     for (const opts of optsList) {
@@ -174,6 +176,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
             if (opts.paymentStatus && !existing.paymentStatus) existing.paymentStatus = opts.paymentStatus;
             if (opts.paidAmount != null && existing.paidAmount == null) existing.paidAmount = opts.paidAmount;
             if (opts.referenceNumber && !existing.referenceNumber) existing.referenceNumber = opts.referenceNumber;
+            if (opts.bankAccountId && !existing.bankAccountId) existing.bankAccountId = opts.bankAccountId;
         } else {
             grouped.set(groupingKey, {
                 supplierId: supplierId || undefined,
@@ -189,6 +192,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
                 paymentMethod: opts.paymentMethod,
                 paymentStatus: opts.paymentStatus,
                 paidAmount: opts.paidAmount,
+                bankAccountId: opts.bankAccountId,
             });
         }
     }
@@ -224,6 +228,7 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
             paymentMethod,
             paymentStatus,
             paidAmount,
+            bankAccountId: group.paymentMethod === 'bank' ? (group.bankAccountId ?? undefined) : undefined,
             referenceNumber: group.referenceNumber || undefined,
             notes: group.notes || '',
             status: 'received' as const,
