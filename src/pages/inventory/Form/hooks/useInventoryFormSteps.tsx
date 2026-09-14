@@ -51,7 +51,7 @@ interface InventoryFormStepsInput {
     showPurchaseCreationSection: boolean;
     purchaseSupplierIds: string[];
     supplierPurchaseDrafts: Record<string, any>;
-    updatePurchaseDraft: (supplierId: string, field: string, value: string) => void;
+    updatePurchaseDraft: (supplierId: string, field: string, value: any) => void;
     setSupplierPresetName: (name: string) => void;
     setSupplierDialogOpen: (open: boolean) => void;
 }
@@ -193,6 +193,15 @@ export function useInventoryFormSteps(
                         supplierPurchaseDrafts={supplierPurchaseDrafts}
                         suppliers={suppliers}
                         updatePurchaseDraft={updatePurchaseDraft}
+                        localBatches={localBatches}
+                        hasExpiry={hasExpiry}
+                        isMultiSupplier={isMultiSupplier}
+                        watchedSupplierStocks={form.watch('supplierStocks')}
+                        purchaseRate={Number(form.watch('purchaseRate') || 0)}
+                        quantity={Number(form.watch('quantity') || 0)}
+                        unit={form.watch('unit')}
+                        packSize={Number(form.watch('packSize') || 0)}
+                        packUnit={form.watch('packUnit') ?? undefined}
                     />
                 ),
             });

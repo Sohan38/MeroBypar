@@ -86,6 +86,7 @@ export type CreatePurchaseForNewItemOpts = {
     purchaseRate?: number | null;
     date?: string | Date | null;
     invoiceNumber?: string | null;
+    referenceNumber?: string | null;
     notes?: string | null;
     batchId?: string | null;
     batchNumber?: string | null;
@@ -93,6 +94,15 @@ export type CreatePurchaseForNewItemOpts = {
     expiryMonths?: number | null;
     expiryDate?: string | null;
     locationId?: string | null;
+    discount?: number;
+    tax?: number;
+    paymentMethod?: string;
+    paymentStatus?: 'paid' | 'partial' | 'unpaid';
+    paidAmount?: number;
+    packQuantity?: number | null;
+    packCost?: number | null;
+    packUnit?: string | null;
+    packSize?: number | null;
 };
 
 async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsList: CreatePurchaseForNewItemOpts[]) {
@@ -104,10 +114,16 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
         supplierId?: string | null;
         supplierName?: string | null;
         invoiceNumber?: string | null;
+        referenceNumber?: string | null;
         dateIso: string;
         notes?: string | null;
         items: any[];
         locationId?: string | null;
+        discount?: number;
+        tax?: number;
+        paymentMethod?: string;
+        paymentStatus?: 'paid' | 'partial' | 'unpaid';
+        paidAmount?: number;
     }> = new Map();
 
     for (const opts of optsList) {
@@ -134,6 +150,10 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
             manufacturingDate: opts.manufacturingDate ?? undefined,
             expiryMonths: opts.expiryMonths ?? undefined,
             expiryDate: opts.expiryDate ?? undefined,
+            packQuantity: opts.packQuantity ?? undefined,
+            packCost: opts.packCost ?? undefined,
+            packUnit: opts.packUnit ?? undefined,
+            packSize: opts.packSize ?? undefined,
         } as any;
 
         const supplierKey = supplierId || resolvedSupplierName || 'unknown-supplier';
@@ -148,15 +168,27 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
             if (!existing.notes && opts.notes) {
                 existing.notes = opts.notes;
             }
+            if (opts.discount != null && existing.discount == null) existing.discount = opts.discount;
+            if (opts.tax != null && existing.tax == null) existing.tax = opts.tax;
+            if (opts.paymentMethod && !existing.paymentMethod) existing.paymentMethod = opts.paymentMethod;
+            if (opts.paymentStatus && !existing.paymentStatus) existing.paymentStatus = opts.paymentStatus;
+            if (opts.paidAmount != null && existing.paidAmount == null) existing.paidAmount = opts.paidAmount;
+            if (opts.referenceNumber && !existing.referenceNumber) existing.referenceNumber = opts.referenceNumber;
         } else {
             grouped.set(groupingKey, {
                 supplierId: supplierId || undefined,
                 supplierName: resolvedSupplierName ?? undefined,
                 invoiceNumber: invoiceNumber ?? undefined,
+                referenceNumber: opts.referenceNumber ?? undefined,
                 dateIso,
                 notes: opts.notes || undefined,
                 items: [item],
                 locationId: opts.locationId || undefined,
+                discount: opts.discount,
+                tax: opts.tax,
+                paymentMethod: opts.paymentMethod,
+                paymentStatus: opts.paymentStatus,
+                paidAmount: opts.paidAmount,
             });
         }
     }
@@ -164,8 +196,21 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
     const payloads: Array<any> = [];
     for (const group of grouped.values()) {
         const items = group.items;
-        const grandTotal = items.reduce((sum, item) => sum + item.subtotal, 0);
+        const subtotal = safeCurrency(items.reduce((sum, item) => sum + (Number(item.subtotal) || 0), 0));
+        const discount = Math.max(0, Number(group.discount) || 0);
+        const taxable = Math.max(0, subtotal - discount);
+        const tax = Math.max(0, Number(group.tax) || 0);
+        const grandTotal = safeCurrency(Math.max(0, subtotal - discount + tax));
         const invoice = group.invoiceNumber || generateSupplierInvoiceNumber(purchases, group.supplierName ?? '', group.dateIso ? new Date(group.dateIso) : new Date());
+
+        const paymentStatus = group.paymentStatus || 'unpaid';
+        const paymentMethod = group.paymentMethod || 'cash';
+        let paidAmount = 0;
+        if (paymentStatus === 'paid') {
+            paidAmount = grandTotal;
+        } else if (paymentStatus === 'partial') {
+            paidAmount = Math.min(grandTotal, Math.max(0, Number(group.paidAmount) || 0));
+        }
 
         payloads.push({
             invoiceNumber: invoice,
@@ -173,13 +218,13 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
             supplierName: group.supplierName ?? null,
             date: group.dateIso,
             items,
-            discount: 0,
-            tax: 0,
+            discount,
+            tax,
             grandTotal,
-            paymentMethod: 'cash',
-            paymentStatus: 'unpaid',
-            paidAmount: 0,
-            referenceNumber: undefined,
+            paymentMethod,
+            paymentStatus,
+            paidAmount,
+            referenceNumber: group.referenceNumber || undefined,
             notes: group.notes || '',
             status: 'received' as const,
             locationId: group.locationId ?? undefined,

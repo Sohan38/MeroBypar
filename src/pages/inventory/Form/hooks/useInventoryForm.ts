@@ -11,6 +11,7 @@ import { generateSupplierInvoiceNumber, generateBatchNumber } from '@/utils/numb
 import { useStorageProvider } from '@/storage/StorageContext';
 import { createPurchasesForNewItem } from '@/services/purchaseHelpers';
 import { PaymentMethod, ProductUnit, ProductBatch, BatchFormData, PurchasePaymentStatus } from '@/types';
+import { useApp } from '@/contexts/AppContext';
 import { productSchema, ProductFormValues } from '../types';
 import {
     calculateTotalSupplierStock,
@@ -27,7 +28,13 @@ export type SupplierPurchaseDraft = {
     invoiceNumber: string;
     purchaseDate: string;
     referenceNumber: string;
-    paymentMethod: PaymentMethod;
+    discountMode: 'amount' | 'percent';
+    discountAmount: string;
+    discountPercent: string;
+    taxMode: 'amount' | 'percent';
+    taxAmount: string;
+    taxPercent: string;
+    paymentMethod: PaymentMethod | string;
     paymentStatus: PurchasePaymentStatus;
     paidAmount: string;
     notes: string;
@@ -44,14 +51,9 @@ export function useInventoryForm(
     const { id } = useParams();
     const { items: allInventory, add, update } = useInventory();
     const { items: suppliers } = useSuppliers();
-    const {
-        items: allBatches,
-        add: addBatch,
-        update: updateBatch,
-        hardRemove: removeBatch,
-        refresh: refreshBatches,
-    } = useProductBatches();
+    const { items: allBatches, add: addBatch, update: updateBatch, remove: removeBatch, refresh: refreshBatches } = useProductBatches();
     const { items: purchases, refresh: refreshPurchases } = usePurchases();
+    const { settings } = useApp();
     const storage = useStorageProvider();
     const [, setLocation] = useLocation();
 
@@ -186,14 +188,23 @@ export function useInventoryForm(
         try { return decodeURIComponent(returnTo); } catch { return returnTo; }
     }, [returnTo]);
 
-    const showPurchaseCreationSection = isNew && Boolean(decodedReturnTo && decodedReturnTo.includes('/purchases'));
-
     const isMultiSupplier = !hasExpiry && !hasVariants && watchedSupplierIds.length >= 2;
 
     const purchaseSupplierIds = useMemo(() => {
-        if (watchedSupplierIds.length > 0) return watchedSupplierIds;
-        return supplierIdFromQuery ? [supplierIdFromQuery] : [];
-    }, [watchedSupplierIds, supplierIdFromQuery]);
+        const ids = new Set<string>();
+        if (watchedSupplierIds && watchedSupplierIds.length > 0) {
+            watchedSupplierIds.forEach(id => { if (id) ids.add(id); });
+        }
+        if (hasExpiry && localBatches && localBatches.length > 0) {
+            localBatches.forEach(b => { if (b.supplierId) ids.add(b.supplierId); });
+        }
+        if (supplierIdFromQuery) {
+            ids.add(supplierIdFromQuery);
+        }
+        return Array.from(ids);
+    }, [watchedSupplierIds, hasExpiry, localBatches, supplierIdFromQuery]);
+
+    const showPurchaseCreationSection = isNew && purchaseSupplierIds.length > 0;
 
     const packSizeWatch = useWatch({ control: form.control, name: 'packSize' });
 
@@ -307,6 +318,12 @@ export function useInventoryForm(
                         invoiceNumber: generateSupplierInvoiceNumber(purchases, supplier?.name, defaultDate),
                         purchaseDate: existing?.purchaseDate || defaultDate,
                         referenceNumber: existing?.referenceNumber ?? '',
+                        discountMode: existing?.discountMode ?? 'amount',
+                        discountAmount: existing?.discountAmount ?? '0',
+                        discountPercent: existing?.discountPercent ?? '0',
+                        taxMode: existing?.taxMode ?? 'amount',
+                        taxAmount: existing?.taxAmount ?? '0',
+                        taxPercent: existing?.taxPercent ?? String(settings.taxRate || 13),
                         paymentMethod: existing?.paymentMethod ?? 'cash',
                         paymentStatus: existing?.paymentStatus ?? 'unpaid',
                         paidAmount: existing?.paidAmount ?? '0',
@@ -316,7 +333,7 @@ export function useInventoryForm(
             });
             return next;
         });
-    }, [showPurchaseCreationSection, purchaseSupplierIds, purchases, supplierLookup]);
+    }, [showPurchaseCreationSection, purchaseSupplierIds, purchases, supplierLookup, settings.taxRate]);
 
     const buildBatchNumberForSupplier = useCallback(
         (supplierId: string | null | undefined, existingList: ProductBatch[] = localBatches) => {
@@ -485,7 +502,7 @@ export function useInventoryForm(
         }
     }, [form]);
 
-    const updatePurchaseDraft = (supplierId: string, field: keyof SupplierPurchaseDraft, value: string) => {
+    const updatePurchaseDraft = (supplierId: string, field: keyof SupplierPurchaseDraft, value: any) => {
         setSupplierPurchaseDrafts(prev => ({
             ...prev,
             [supplierId]: {
@@ -493,6 +510,12 @@ export function useInventoryForm(
                     invoiceNumber: '',
                     purchaseDate: new Date().toLocaleDateString('en-CA'),
                     referenceNumber: '',
+                    discountMode: 'amount',
+                    discountAmount: '0',
+                    discountPercent: '0',
+                    taxMode: 'amount',
+                    taxAmount: '0',
+                    taxPercent: String(settings.taxRate || 13),
                     paymentMethod: 'cash',
                     paymentStatus: 'unpaid',
                     paidAmount: '0',
@@ -663,18 +686,57 @@ export function useInventoryForm(
                                 const supplier = suppliers.find(c => c.id === batchSupplierId);
                                 const rate = Number(batch.purchaseRate ?? productData.purchaseRate ?? 0) || 0;
                                 const batchLocationId = resolvedSupplierStocks.find(ss => ss.supplierId === batchSupplierId)?.locationId || 'loc-default';
+
+                                // Calculate subtotal for this supplier's batches to derive discount & tax
+                                const supplierBatches = localBatches.filter(b => (b.supplierId || resolvedSupplierIds[0] || productData.supplierId) === batchSupplierId);
+                                const supplierSubtotal = safeCurrency(supplierBatches.reduce((sum, b) => sum + safeMul(Number(b.quantity || 0), Number(b.purchaseRate || 0), 6), 0));
+                                const draft = batchSupplierId ? supplierPurchaseDrafts[batchSupplierId] : undefined;
+
+                                let discountAmount = 0;
+                                let taxAmount = 0;
+                                if (draft) {
+                                    if (draft.discountMode === 'percent') {
+                                        const pct = Math.max(0, Number(draft.discountPercent) || 0);
+                                        discountAmount = safeCurrency(safeMul(supplierSubtotal, pct / 100));
+                                    } else {
+                                        discountAmount = Math.max(0, Number(draft.discountAmount) || 0);
+                                    }
+                                    const taxable = Math.max(0, supplierSubtotal - discountAmount);
+                                    if (draft.taxMode === 'percent') {
+                                        const pct = Math.max(0, Number(draft.taxPercent) || 0);
+                                        taxAmount = safeCurrency(safeMul(taxable, pct / 100));
+                                    } else {
+                                        taxAmount = Math.max(0, Number(draft.taxAmount) || 0);
+                                    }
+                                }
+
                                 purchaseRequests.push({
-                                    productId: newId, quantity: qty, purchaseRate: rate, supplierId: batchSupplierId,
-                                    supplierName: supplier?.name, invoiceNumber: undefined,
-                                    date: `${new Date().toLocaleDateString('en-CA')}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
-                                    notes: batch.notes ?? 'Opening stock from product creation',
-                                    batchId: batch.id, batchNumber: batch.batchNumber,
-                                    manufacturingDate: batch.manufacturingDate, expiryMonths: batch.expiryMonths, expiryDate: batch.expiryDate,
+                                    productId: newId,
+                                    quantity: qty,
+                                    purchaseRate: rate,
+                                    supplierId: batchSupplierId,
+                                    supplierName: supplier?.name,
+                                    invoiceNumber: draft?.invoiceNumber?.trim() || undefined,
+                                    date: draft?.purchaseDate
+                                        ? `${draft.purchaseDate}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                                        : `${new Date().toLocaleDateString('en-CA')}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
+                                    referenceNumber: draft?.referenceNumber || undefined,
+                                    notes: draft?.notes || batch.notes || 'Opening stock from product creation',
+                                    batchId: batch.id,
+                                    batchNumber: batch.batchNumber,
+                                    manufacturingDate: batch.manufacturingDate,
+                                    expiryMonths: batch.expiryMonths,
+                                    expiryDate: batch.expiryDate,
                                     locationId: batchLocationId,
                                     packQuantity: data.packSize && safeSize > 0 ? Math.floor(qty / safeSize) : undefined,
                                     packCost: data.packSize && safeSize > 0 ? safeCurrency(rate * safeSize) : undefined,
                                     packUnit: data.packUnit || undefined,
                                     packSize: data.packSize || undefined,
+                                    discount: discountAmount,
+                                    tax: taxAmount,
+                                    paymentMethod: draft?.paymentMethod || 'cash',
+                                    paymentStatus: draft?.paymentStatus || 'unpaid',
+                                    paidAmount: Number(draft?.paidAmount || 0),
                                 });
                             }
                         } else if (shouldCreateSupplierPurchases) {
@@ -684,12 +746,45 @@ export function useInventoryForm(
                                 if (!supplierId || qty <= 0) continue;
                                 const supplier = suppliers.find(c => c.id === supplierId);
                                 const rate = Number(entry?.cost ?? productData.purchaseRate ?? 0) || 0;
+                                const supplierSubtotal = safeCurrency(safeMul(qty, rate));
+                                const draft = supplierPurchaseDrafts[supplierId];
+
+                                let discountAmount = 0;
+                                let taxAmount = 0;
+                                if (draft) {
+                                    if (draft.discountMode === 'percent') {
+                                        const pct = Math.max(0, Number(draft.discountPercent) || 0);
+                                        discountAmount = safeCurrency(safeMul(supplierSubtotal, pct / 100));
+                                    } else {
+                                        discountAmount = Math.max(0, Number(draft.discountAmount) || 0);
+                                    }
+                                    const taxable = Math.max(0, supplierSubtotal - discountAmount);
+                                    if (draft.taxMode === 'percent') {
+                                        const pct = Math.max(0, Number(draft.taxPercent) || 0);
+                                        taxAmount = safeCurrency(safeMul(taxable, pct / 100));
+                                    } else {
+                                        taxAmount = Math.max(0, Number(draft.taxAmount) || 0);
+                                    }
+                                }
+
                                 purchaseRequests.push({
-                                    productId: newId, quantity: qty, purchaseRate: rate, supplierId,
-                                    supplierName: supplier?.name, invoiceNumber: undefined,
-                                    date: `${new Date().toLocaleDateString('en-CA')}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
-                                    notes: 'Opening stock from product creation',
+                                    productId: newId,
+                                    quantity: qty,
+                                    purchaseRate: rate,
+                                    supplierId,
+                                    supplierName: supplier?.name,
+                                    invoiceNumber: draft?.invoiceNumber?.trim() || undefined,
+                                    date: draft?.purchaseDate
+                                        ? `${draft.purchaseDate}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                                        : `${new Date().toLocaleDateString('en-CA')}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
+                                    referenceNumber: draft?.referenceNumber || undefined,
+                                    notes: draft?.notes || 'Opening stock from product creation',
                                     locationId: entry.locationId || 'loc-default',
+                                    discount: discountAmount,
+                                    tax: taxAmount,
+                                    paymentMethod: draft?.paymentMethod || 'cash',
+                                    paymentStatus: draft?.paymentStatus || 'unpaid',
+                                    paidAmount: Number(draft?.paidAmount || 0),
                                 });
                             }
                         } else {
@@ -698,12 +793,46 @@ export function useInventoryForm(
                                 const fallbackSupplier = resolvedSupplierIds[0] ?? undefined;
                                 const supplier = suppliers.find(c => c.id === fallbackSupplier);
                                 const fallbackLocationId = resolvedSupplierStocks[0]?.locationId || 'loc-default';
+                                const rate = Number(productData.purchaseRate || 0);
+                                const subtotal = safeCurrency(safeMul(totalQty, rate));
+                                const draft = fallbackSupplier ? supplierPurchaseDrafts[fallbackSupplier] : undefined;
+
+                                let discountAmount = 0;
+                                let taxAmount = 0;
+                                if (draft) {
+                                    if (draft.discountMode === 'percent') {
+                                        const pct = Math.max(0, Number(draft.discountPercent) || 0);
+                                        discountAmount = safeCurrency(safeMul(subtotal, pct / 100));
+                                    } else {
+                                        discountAmount = Math.max(0, Number(draft.discountAmount) || 0);
+                                    }
+                                    const taxable = Math.max(0, subtotal - discountAmount);
+                                    if (draft.taxMode === 'percent') {
+                                        const pct = Math.max(0, Number(draft.taxPercent) || 0);
+                                        taxAmount = safeCurrency(safeMul(taxable, pct / 100));
+                                    } else {
+                                        taxAmount = Math.max(0, Number(draft.taxAmount) || 0);
+                                    }
+                                }
+
                                 purchaseRequests.push({
-                                    productId: newId, quantity: totalQty, purchaseRate: productData.purchaseRate || undefined,
-                                    supplierId: fallbackSupplier, supplierName: supplier?.name, invoiceNumber: undefined,
-                                    date: `${new Date().toLocaleDateString('en-CA')}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
-                                    notes: 'Opening stock from product creation',
+                                    productId: newId,
+                                    quantity: totalQty,
+                                    purchaseRate: productData.purchaseRate || undefined,
+                                    supplierId: fallbackSupplier,
+                                    supplierName: supplier?.name,
+                                    invoiceNumber: draft?.invoiceNumber?.trim() || undefined,
+                                    date: draft?.purchaseDate
+                                        ? `${draft.purchaseDate}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`
+                                        : `${new Date().toLocaleDateString('en-CA')}T${new Date().toLocaleTimeString('en-GB', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}`,
+                                    referenceNumber: draft?.referenceNumber || undefined,
+                                    notes: draft?.notes || 'Opening stock from product creation',
                                     locationId: fallbackLocationId,
+                                    discount: discountAmount,
+                                    tax: taxAmount,
+                                    paymentMethod: draft?.paymentMethod || 'cash',
+                                    paymentStatus: draft?.paymentStatus || 'unpaid',
+                                    paidAmount: Number(draft?.paidAmount || 0),
                                 });
                             }
                         }
