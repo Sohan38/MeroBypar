@@ -271,6 +271,59 @@ export class FinancialPostingService {
         });
     }
 
+    static async postCreditLending(storage: IStorageProvider, loan: {
+        id: string;
+        date: string;
+        amount: number;
+        paymentMethod: PaymentMethod | string;
+        bankAccountId?: string | null;
+        splitDisbursements?: PaymentSplitEntry[];
+        customerName?: string | null;
+        description?: string | null;
+    }) {
+        await this.ensureDefaultAccounts(storage);
+        const movements: { accountId: string; amount: number }[] = [];
+
+        // 1. Receivables increases (Asset: money owed to business)
+        movements.push({
+            accountId: 'financial-account-receivables',
+            amount: Math.abs(loan.amount),
+        });
+
+        // 2. Disbursed from financial accounts (Money leaving cash drawer or bank)
+        if (loan.paymentMethod === 'split' && loan.splitDisbursements && loan.splitDisbursements.length > 0) {
+            for (const split of loan.splitDisbursements) {
+                const splitAmt = Number(split.amount) || 0;
+                if (splitAmt <= 0) continue;
+                const explicitId = split.method === 'bank' ? split.bankAccountId : null;
+                const accId = await this.resolvePaymentAccount(storage, split.method, explicitId);
+                if (!accId) throw new Error(`No financial account found for ${split.method}`);
+                movements.push({
+                    accountId: accId,
+                    amount: -Math.abs(splitAmt),
+                });
+            }
+        } else {
+            const explicitId = loan.paymentMethod === 'bank' ? loan.bankAccountId : null;
+            const accId = await this.resolvePaymentAccount(storage, loan.paymentMethod as any, explicitId);
+            if (!accId) throw new Error(`No financial account found for ${loan.paymentMethod}`);
+            movements.push({
+                accountId: accId,
+                amount: -Math.abs(loan.amount),
+            });
+        }
+
+        return this.post(storage, {
+            date: loan.date,
+            type: 'customer_lending',
+            description: `Money lent to ${loan.customerName || 'customer'}${loan.description ? ` · ${loan.description}` : ''}`,
+            sourceType: 'customer_lending',
+            sourceId: loan.id,
+            idempotencyKey: `credit-lending:${loan.id}`,
+            movements,
+        });
+    }
+
     static async postSupplierPayment(storage: IStorageProvider, payment: {
         id: string;
         date: string;

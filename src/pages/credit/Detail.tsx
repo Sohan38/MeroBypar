@@ -166,6 +166,21 @@ export default function CreditDetail() {
           </p>
         </div>
 
+        {/* Credit Type badge */}
+        {credit.creditType === 'loan' ? (
+          <Badge variant="outline" className="px-2 py-0.5 text-xs font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-300/40 shrink-0">
+            Money Loan / सापटी
+          </Badge>
+        ) : credit.sourceSaleId ? (
+          <Badge variant="outline" className="px-2 py-0.5 text-xs font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-300/40 shrink-0">
+            POS Sale
+          </Badge>
+        ) : (
+          <Badge variant="outline" className="px-2 py-0.5 text-xs font-semibold bg-muted text-muted-foreground border-border shrink-0">
+            Udharo
+          </Badge>
+        )}
+
         {/* Status badge */}
         <Badge variant="outline" className={cn('flex items-center gap-1.5 shrink-0', status.className)}>
           {status.icon}
@@ -345,6 +360,20 @@ export default function CreditDetail() {
           )}
           {credit.notes && (
             <DetailRow icon={<FileText className="h-4 w-4" />} label="Notes" value={credit.notes} />
+          )}
+          {credit.creditType === 'loan' && credit.disbursementMethod && (
+            <DetailRow
+              icon={<Banknote className="h-4 w-4 text-primary" />}
+              label="Disbursed From"
+              value={
+                credit.disbursementMethod === 'split'
+                  ? 'Split Payment (Multi-Source)'
+                  : credit.disbursementMethod.toUpperCase()
+              }
+            />
+          )}
+          {credit.referenceNumber && (
+            <DetailRow icon={<FileText className="h-4 w-4" />} label="Reference #" value={credit.referenceNumber} />
           )}
           {sourceSale && (
             <button

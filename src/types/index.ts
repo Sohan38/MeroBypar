@@ -247,6 +247,7 @@ export type FinancialTransactionType =
   | 'sale_payment'
   | 'customer_credit'
   | 'customer_payment'
+  | 'customer_lending'
   | 'supplier_payment'
   | 'purchase_receipt'
   | 'expense'
@@ -511,6 +512,8 @@ export interface CreditPayment {
   splitPayments?: PaymentSplitEntry[];
 }
 
+export type CreditType = 'loan' | 'sale';
+
 export interface Credit extends StorageRecord {
   customerId: string;
   customerName: string;
@@ -525,6 +528,12 @@ export interface Credit extends StorageRecord {
   notes: string;
   sourceSaleId?: string;
   payments: CreditPayment[];
+  creditType?: CreditType;
+  disbursementMethod?: PaymentMethod | string;
+  disbursementAccountId?: string | null;
+  splitDisbursements?: PaymentSplitEntry[];
+  referenceNumber?: string;
+  purpose?: string;
 }
 
 export interface FeatureConfig {

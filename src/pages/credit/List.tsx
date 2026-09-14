@@ -565,6 +565,19 @@ export default function CreditList() {
                                   <span className="font-mono bg-muted px-1.5 py-0.5 rounded text-[11px]">
                                     {credit.id.slice(0, 8).toUpperCase()}
                                   </span>
+                                  {credit.creditType === 'loan' ? (
+                                    <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-semibold bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-300/40">
+                                      Loan / सापटी
+                                    </Badge>
+                                  ) : credit.sourceSaleId ? (
+                                    <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-semibold bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-300/40">
+                                      POS Sale
+                                    </Badge>
+                                  ) : (
+                                    <Badge variant="outline" className="px-1.5 py-0 text-[10px] font-semibold bg-muted text-muted-foreground border-border">
+                                      Udharo
+                                    </Badge>
+                                  )}
                                   <Badge variant="outline" className={cn('flex items-center gap-1 px-2 py-0 text-[10px] font-semibold rounded-full border', statusCfg.className)}>
                                     {statusCfg.icon}
                                     {statusCfg.label}
