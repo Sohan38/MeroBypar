@@ -304,6 +304,11 @@ export function useInventoryForm(
 
 
     // Purchase drafts
+    const supplierPurchaseDraftsRef = useRef(supplierPurchaseDrafts);
+    supplierPurchaseDraftsRef.current = supplierPurchaseDrafts;
+    const purchaseSupplierIdsRef = useRef(purchaseSupplierIds);
+    purchaseSupplierIdsRef.current = purchaseSupplierIds;
+
     useEffect(() => {
         if (!showPurchaseCreationSection) return;
         setSupplierPurchaseDrafts(prev => {
@@ -504,29 +509,36 @@ export function useInventoryForm(
         }
     }, [form]);
 
-    const updatePurchaseDraft = (supplierId: string, field: keyof SupplierPurchaseDraft, value: any) => {
-        setSupplierPurchaseDrafts(prev => ({
-            ...prev,
-            [supplierId]: {
-                ...(prev[supplierId] ?? {
-                    invoiceNumber: '',
-                    purchaseDate: new Date().toLocaleDateString('en-CA'),
-                    referenceNumber: '',
-                    discountMode: 'amount',
-                    discountAmount: '0',
-                    discountPercent: '0',
-                    taxMode: 'amount',
-                    taxAmount: '0',
-                    taxPercent: String(settings.taxRate || 13),
-                    paymentMethod: 'cash',
-                    paymentStatus: 'unpaid',
-                    paidAmount: '0',
-                    notes: '',
-                }),
+    const updatePurchaseDraft = useCallback((supplierId: string, field: keyof SupplierPurchaseDraft, value: any) => {
+        setSupplierPurchaseDrafts(prev => {
+            const supplier = supplierLookup.get(supplierId);
+            const defaultDate = new Date().toLocaleDateString('en-CA');
+            const base: SupplierPurchaseDraft = prev[supplierId] ?? {
+                invoiceNumber: generateSupplierInvoiceNumber(purchases, supplier?.name, defaultDate),
+                purchaseDate: defaultDate,
+                referenceNumber: '',
+                discountMode: 'amount',
+                discountAmount: '0',
+                discountPercent: '0',
+                taxMode: 'amount',
+                taxAmount: '0',
+                taxPercent: String(settings.taxRate || 13),
+                paymentMethod: 'cash',
+                paymentStatus: 'unpaid',
+                paidAmount: '0',
+                bankAccountId: null,
+                notes: '',
+            };
+            const updated = {
+                ...base,
                 [field]: value,
-            },
-        }));
-    };
+            };
+            return {
+                ...prev,
+                [supplierId]: updated,
+            };
+        });
+    }, [purchases, settings.taxRate, supplierLookup]);
 
     const syncBatchPacksToForm = useCallback((batches: ProductBatch[]) => {
         const pSize = Number(form.getValues('packSize'));
@@ -675,6 +687,8 @@ export function useInventoryForm(
 
                 try {
                     if (newId) {
+                        const currentDrafts = supplierPurchaseDraftsRef.current || supplierPurchaseDrafts;
+                        const activeSupplierFallback = purchaseSupplierIdsRef.current[0] || purchaseSupplierIds[0] || '';
                         const purchaseRequests: any[] = [];
                         const shouldCreateBatchPurchases = localBatches.length > 0;
                         const supplierPurchaseEntries = resolvedSupplierStocks.filter(entry => entry?.supplierId && Number(entry.stock) > 0);
@@ -684,15 +698,17 @@ export function useInventoryForm(
                             for (const batch of localBatches) {
                                 const qty = Number(batch.quantity || 0);
                                 if (qty <= 0) continue;
-                                const batchSupplierId = batch.supplierId || resolvedSupplierIds[0] || productData.supplierId || undefined;
+                                const batchSupplierId = batch.supplierId || resolvedSupplierIds[0] || productData.supplierId || activeSupplierFallback || undefined;
                                 const supplier = suppliers.find(c => c.id === batchSupplierId);
                                 const rate = Number(batch.purchaseRate ?? productData.purchaseRate ?? 0) || 0;
                                 const batchLocationId = resolvedSupplierStocks.find(ss => ss.supplierId === batchSupplierId)?.locationId || 'loc-default';
 
                                 // Calculate subtotal for this supplier's batches to derive discount & tax
-                                const supplierBatches = localBatches.filter(b => (b.supplierId || resolvedSupplierIds[0] || productData.supplierId) === batchSupplierId);
+                                const supplierBatches = localBatches.filter(b => (b.supplierId || resolvedSupplierIds[0] || productData.supplierId || activeSupplierFallback) === batchSupplierId);
                                 const supplierSubtotal = safeCurrency(supplierBatches.reduce((sum, b) => sum + safeMul(Number(b.quantity || 0), Number(b.purchaseRate || 0), 6), 0));
-                                const draft = batchSupplierId ? supplierPurchaseDrafts[batchSupplierId] : undefined;
+                                const draft = (batchSupplierId && currentDrafts[batchSupplierId])
+                                    || (activeSupplierFallback && currentDrafts[activeSupplierFallback])
+                                    || Object.values(currentDrafts)[0];
 
                                 let discountAmount = 0;
                                 let taxAmount = 0;
@@ -711,6 +727,11 @@ export function useInventoryForm(
                                         taxAmount = Math.max(0, Number(draft.taxAmount) || 0);
                                     }
                                 }
+
+                                const paymentStatus = draft?.paymentStatus || 'unpaid';
+                                const paidAmount = paymentStatus === 'paid'
+                                    ? supplierSubtotal
+                                    : Number(draft?.paidAmount || 0);
 
                                 purchaseRequests.push({
                                     productId: newId,
@@ -737,8 +758,8 @@ export function useInventoryForm(
                                     discount: discountAmount,
                                     tax: taxAmount,
                                     paymentMethod: draft?.paymentMethod || 'cash',
-                                    paymentStatus: draft?.paymentStatus || 'unpaid',
-                                    paidAmount: Number(draft?.paidAmount || 0),
+                                    paymentStatus,
+                                    paidAmount,
                                     bankAccountId: draft?.paymentMethod === 'bank' ? (draft?.bankAccountId || null) : null,
                                 });
                             }
@@ -750,7 +771,9 @@ export function useInventoryForm(
                                 const supplier = suppliers.find(c => c.id === supplierId);
                                 const rate = Number(entry?.cost ?? productData.purchaseRate ?? 0) || 0;
                                 const supplierSubtotal = safeCurrency(safeMul(qty, rate));
-                                const draft = supplierPurchaseDrafts[supplierId];
+                                const draft = (supplierId && currentDrafts[supplierId])
+                                    || (activeSupplierFallback && currentDrafts[activeSupplierFallback])
+                                    || Object.values(currentDrafts)[0];
 
                                 let discountAmount = 0;
                                 let taxAmount = 0;
@@ -770,6 +793,11 @@ export function useInventoryForm(
                                     }
                                 }
 
+                                const paymentStatus = draft?.paymentStatus || 'unpaid';
+                                const paidAmount = paymentStatus === 'paid'
+                                    ? supplierSubtotal
+                                    : Number(draft?.paidAmount || 0);
+
                                 purchaseRequests.push({
                                     productId: newId,
                                     quantity: qty,
@@ -786,20 +814,22 @@ export function useInventoryForm(
                                     discount: discountAmount,
                                     tax: taxAmount,
                                     paymentMethod: draft?.paymentMethod || 'cash',
-                                    paymentStatus: draft?.paymentStatus || 'unpaid',
-                                    paidAmount: Number(draft?.paidAmount || 0),
+                                    paymentStatus,
+                                    paidAmount,
                                     bankAccountId: draft?.paymentMethod === 'bank' ? (draft?.bankAccountId || null) : null,
                                 });
                             }
                         } else {
                             const totalQty = Number(calculatedStock || data.quantity || 0) || 0;
                             if (totalQty > 0) {
-                                const fallbackSupplier = resolvedSupplierIds[0] ?? undefined;
+                                const fallbackSupplier = resolvedSupplierIds[0] || activeSupplierFallback || productData.supplierId || undefined;
                                 const supplier = suppliers.find(c => c.id === fallbackSupplier);
                                 const fallbackLocationId = resolvedSupplierStocks[0]?.locationId || 'loc-default';
                                 const rate = Number(productData.purchaseRate || 0);
                                 const subtotal = safeCurrency(safeMul(totalQty, rate));
-                                const draft = fallbackSupplier ? supplierPurchaseDrafts[fallbackSupplier] : undefined;
+                                const draft = (fallbackSupplier && currentDrafts[fallbackSupplier])
+                                    || (activeSupplierFallback && currentDrafts[activeSupplierFallback])
+                                    || Object.values(currentDrafts)[0];
 
                                 let discountAmount = 0;
                                 let taxAmount = 0;
@@ -819,6 +849,11 @@ export function useInventoryForm(
                                     }
                                 }
 
+                                const paymentStatus = draft?.paymentStatus || 'unpaid';
+                                const paidAmount = paymentStatus === 'paid'
+                                    ? subtotal
+                                    : Number(draft?.paidAmount || 0);
+
                                 purchaseRequests.push({
                                     productId: newId,
                                     quantity: totalQty,
@@ -835,8 +870,8 @@ export function useInventoryForm(
                                     discount: discountAmount,
                                     tax: taxAmount,
                                     paymentMethod: draft?.paymentMethod || 'cash',
-                                    paymentStatus: draft?.paymentStatus || 'unpaid',
-                                    paidAmount: Number(draft?.paidAmount || 0),
+                                    paymentStatus,
+                                    paidAmount,
                                     bankAccountId: draft?.paymentMethod === 'bank' ? (draft?.bankAccountId || null) : null,
                                 });
                             }
@@ -893,6 +928,7 @@ export function useInventoryForm(
         isNew, existingProductNameLookup, barcodeLookup, existingProduct, hasExpiry, hasVariants,
         localBatches, suppliers, averagePurchaseRate, add, storage, refreshBatches, refreshPurchases,
         allBatches, update, removeBatch, updateBatch, addBatch, purchases, returnTo, setLocation,
+        supplierPurchaseDrafts, purchaseSupplierIds,
     ]);
 
     return {

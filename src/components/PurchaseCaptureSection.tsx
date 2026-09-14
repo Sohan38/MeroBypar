@@ -389,7 +389,10 @@ export const PurchaseCaptureSection = React.memo(({
                         <div className="grid grid-cols-3 gap-1.5 p-1 rounded-xl bg-muted/60 border border-border/50">
                             <button
                                 type="button"
-                                onClick={() => updatePurchaseDraft(activeSupplierId, 'paymentStatus', 'unpaid')}
+                                onClick={() => {
+                                    updatePurchaseDraft(activeSupplierId, 'paymentStatus', 'unpaid');
+                                    updatePurchaseDraft(activeSupplierId, 'paidAmount', '0');
+                                }}
                                 className={cn(
                                     'py-2 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5',
                                     draft.paymentStatus === 'unpaid'

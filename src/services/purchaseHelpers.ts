@@ -170,11 +170,11 @@ async function buildPurchasePayloadsForNewItems(storage: IStorageProvider, optsL
             if (!existing.notes && opts.notes) {
                 existing.notes = opts.notes;
             }
-            if (opts.discount != null && existing.discount == null) existing.discount = opts.discount;
-            if (opts.tax != null && existing.tax == null) existing.tax = opts.tax;
-            if (opts.paymentMethod && !existing.paymentMethod) existing.paymentMethod = opts.paymentMethod;
-            if (opts.paymentStatus && !existing.paymentStatus) existing.paymentStatus = opts.paymentStatus;
-            if (opts.paidAmount != null && existing.paidAmount == null) existing.paidAmount = opts.paidAmount;
+            if (opts.discount != null && (existing.discount == null || opts.discount > 0)) existing.discount = opts.discount;
+            if (opts.tax != null && (existing.tax == null || opts.tax > 0)) existing.tax = opts.tax;
+            if (opts.paymentMethod && (!existing.paymentMethod || existing.paymentMethod === 'cash' || opts.paymentMethod !== 'cash')) existing.paymentMethod = opts.paymentMethod;
+            if (opts.paymentStatus && (!existing.paymentStatus || existing.paymentStatus === 'unpaid' || opts.paymentStatus === 'paid')) existing.paymentStatus = opts.paymentStatus;
+            if (opts.paidAmount != null && (existing.paidAmount == null || existing.paidAmount === 0 || opts.paidAmount > (existing.paidAmount || 0))) existing.paidAmount = opts.paidAmount;
             if (opts.referenceNumber && !existing.referenceNumber) existing.referenceNumber = opts.referenceNumber;
             if (opts.bankAccountId && !existing.bankAccountId) existing.bankAccountId = opts.bankAccountId;
         } else {
