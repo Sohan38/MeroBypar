@@ -233,14 +233,29 @@ export function BatchFormDialog({
   // Resolve the invoice number for the batch being edited.
   // Fall back to purchaseInvoiceId if the actual invoice number hasn't loaded yet.
   const editBatchInvoiceNumber = useMemo(() => {
-    if (!editBatch?.purchaseInvoiceId) return '';
+    if (editBatch?.purchaseInvoiceId) {
+      const purchase = existingPurchases.find(
+        (item) => item.id === editBatch.purchaseInvoiceId,
+      );
+      return purchase?.invoiceNumber ?? editBatch.purchaseInvoiceId;
+    }
 
-    const purchase = existingPurchases.find(
-      (item) => item.id === editBatch.purchaseInvoiceId,
-    );
+    // If batch was created in the current form session before final submission,
+    // generate the preview invoice number for its supplier
+    const batchSupplierId = editBatch?.supplierId;
+    if (batchSupplierId) {
+      const batchSupplier = suppliers.find((s) => s.id === batchSupplierId);
+      if (batchSupplier) {
+        return generateSupplierInvoiceNumber(
+          existingPurchases,
+          batchSupplier.name,
+          editBatch.createdAt ? new Date(editBatch.createdAt) : new Date(),
+        );
+      }
+    }
 
-    return purchase?.invoiceNumber ?? editBatch.purchaseInvoiceId;
-  }, [editBatch?.purchaseInvoiceId, existingPurchases]);
+    return '';
+  }, [editBatch, existingPurchases, suppliers]);
 
   const selectableSuppliers = useMemo(() => {
     const query = filterQuery.trim();
@@ -374,12 +389,25 @@ export function BatchFormDialog({
     defaultSupplierId,
   ]);
 
-  // When adding, auto‑generate batch number & invoice on supplier selection
+  // When adding or editing unsaved batch, auto‑generate batch number & invoice on supplier selection
   useEffect(() => {
     if (!open) return;
 
-    // Editing an existing batch → never regenerate identifiers
-    if (editBatch) return;
+    if (editBatch) {
+      if (editBatch.purchaseInvoiceId) {
+        setSupplierInvoiceNumber(editBatchInvoiceNumber);
+      } else if (selectedSupplierId) {
+        const generatedInvoiceNumber = generateSupplierInvoiceNumber(
+          existingPurchases,
+          selectedSupplier?.name ?? '',
+          editBatch.createdAt ? new Date(editBatch.createdAt) : new Date(),
+        );
+        setSupplierInvoiceNumber(generatedInvoiceNumber);
+      } else {
+        setSupplierInvoiceNumber(editBatchInvoiceNumber);
+      }
+      return;
+    }
 
     // No supplier selected → clear the generated values
     if (!selectedSupplierId) {
@@ -413,6 +441,7 @@ export function BatchFormDialog({
   }, [
     open,
     editBatch,
+    editBatchInvoiceNumber,
     existingBatches,
     existingPurchases,
     form,
@@ -446,6 +475,7 @@ export function BatchFormDialog({
     onSave({
       productId,
       supplierId: data.supplierId,
+      purchaseInvoiceId: editBatch?.purchaseInvoiceId,
       batchNumber: data.batchNumber,
       manufacturingDate: data.manufacturingDate,
       expiryMonths: finalExpiryMonths,

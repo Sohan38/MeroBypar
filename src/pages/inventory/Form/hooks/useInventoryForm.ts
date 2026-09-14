@@ -409,35 +409,62 @@ export function useInventoryForm(
 
     const getDraftBatchDefaults = useCallback(() => {
         const safePSize = Number(form.getValues('packSize')) || 1;
-        const pQty = form.getValues('packQuantity');
         const pCost = form.getValues('packPurchaseCost');
-        const qty = form.getValues('quantity');
         const rate = form.getValues('purchaseRate');
         const supplierIds = form.getValues('supplierIds') || [];
 
-        const packQtyNum = (pQty !== null && pQty !== undefined && Number(pQty) > 0)
-            ? Number(pQty)
-            : (preBatchStockRef.current.packQuantity && preBatchStockRef.current.packQuantity > 0
-                ? preBatchStockRef.current.packQuantity
-                : null);
-
+        // Cost logic (preserved without changes)
         const packCostNum = (pCost !== null && pCost !== undefined && Number(pCost) > 0)
             ? Number(pCost)
             : (preBatchStockRef.current.packPurchaseCost && preBatchStockRef.current.packPurchaseCost > 0
                 ? preBatchStockRef.current.packPurchaseCost
                 : null);
 
-        const effectiveQty = (packQtyNum !== null && packQtyNum > 0 && safePSize > 0)
-            ? safeQty(safeMul(packQtyNum, safePSize))
-            : (preBatchStockRef.current.quantity > 0
-                ? preBatchStockRef.current.quantity
-                : (qty && Number(qty) > 0 ? Number(qty) : undefined));
-
         const effectiveRate = (packCostNum !== null && packCostNum > 0 && safePSize > 0)
             ? safeDiv(packCostNum, safePSize, 6)
             : (preBatchStockRef.current.purchaseRate > 0
                 ? preBatchStockRef.current.purchaseRate
                 : (rate && Number(rate) > 0 ? Number(rate) : undefined));
+
+        // Intelligent opening stock allocation across batches
+        const targetPacks = preBatchStockRef.current.packQuantity;
+        const targetQty = preBatchStockRef.current.quantity;
+        const allocatedQty = localBatches.reduce((sum, b) => sum + (Number(b.quantity) || 0), 0);
+        const allocatedPacks = safePSize > 0 ? Math.floor(allocatedQty / safePSize) : 0;
+
+        let packQtyNum: number | null = null;
+        let effectiveQty: number | undefined = undefined;
+
+        if (localBatches.length === 0) {
+            // First batch: allocate initial opening stock if set
+            packQtyNum = (targetPacks !== null && targetPacks > 0)
+                ? targetPacks
+                : 1;
+            effectiveQty = (targetQty > 0)
+                ? targetQty
+                : (safePSize > 0 ? safeQty(safeMul(packQtyNum, safePSize)) : 1);
+        } else {
+            // Subsequent batches (2nd, 3rd, etc.):
+            // Check if there is remaining unallocated opening stock
+            const remainingPacks = (targetPacks !== null && targetPacks > 0)
+                ? Math.max(0, targetPacks - allocatedPacks)
+                : 0;
+            const remainingQty = (targetQty > 0)
+                ? Math.max(0, targetQty - allocatedQty)
+                : 0;
+
+            if (remainingPacks > 0) {
+                packQtyNum = remainingPacks;
+                effectiveQty = remainingQty > 0 ? remainingQty : safeQty(safeMul(remainingPacks, safePSize));
+            } else if (remainingQty > 0) {
+                effectiveQty = remainingQty;
+                packQtyNum = safePSize > 0 ? Math.floor(remainingQty / safePSize) : 1;
+            } else {
+                // All opening stock has been accounted for; default to 1 pack (or 1 base unit)
+                packQtyNum = 1;
+                effectiveQty = safePSize > 0 ? safePSize : 1;
+            }
+        }
 
         return {
             defaultQuantity: effectiveQty,
@@ -446,7 +473,7 @@ export function useInventoryForm(
             defaultPackPurchaseCost: packCostNum,
             defaultSupplierId: supplierIds[0] || undefined,
         };
-    }, [form]);
+    }, [form, localBatches]);
 
     const handleToggleVariants = useCallback((checked: boolean) => {
         if (checked) {
