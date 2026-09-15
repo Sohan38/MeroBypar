@@ -63,6 +63,13 @@ export interface PrintOptions {
     deviceName?: string;
 }
 
+export class NoPrintersDetectedError extends Error {
+    constructor(message = 'No installed printers detected on this computer.') {
+        super(message);
+        this.name = 'NoPrintersDetectedError';
+    }
+}
+
 export interface PrintResult {
     success: boolean;
     fallbackUsed?: boolean;
@@ -91,7 +98,7 @@ export async function getSystemPrinters(): Promise<SystemPrinterInfo[]> {
  * Automatically selects the correct strategy for the current platform.
  *
  * @param html    A full `<!DOCTYPE html>…</html>` string
- * @param options Optional title and future strategy overrides
+ * @param options Optional title, silent flag, and device name
  * @returns       Resolves when printing has been initiated (not necessarily finished)
  */
 export function printHTMLDocument(
@@ -125,31 +132,24 @@ async function printViaAndroidManager(html: string, title = 'Receipt'): Promise<
 async function printViaDesktopBridge(html: string, options: PrintOptions = {}): Promise<void> {
     const bridge = (window as any).electronAPI;
     if (typeof bridge?.printHTML === 'function') {
-        // If silent print requested, verify printer availability first
-        if (options.silent) {
-            const printers = await getSystemPrinters();
-            
-            if (printers.length === 0) {
-                // No printers installed on Windows — gracefully fall back to OS dialog
-                console.warn('[POS Print] No installed printers found. Falling back to system dialog.');
-                await bridge.printHTML(html, { ...options, silent: false, deviceName: undefined });
-                return;
-            }
+        // Check for printers on desktop
+        const printers = await getSystemPrinters();
 
-            // If a specific printer name was requested, check if it is still connected
-            if (options.deviceName) {
-                const found = printers.some(p => p.name === options.deviceName);
-                if (!found) {
-                    console.warn(`[POS Print] Configured printer "${options.deviceName}" not detected. Falling back to default printer.`);
-                    // Fall back to system default printer or dialog
-                    const defaultPrinter = printers.find(p => p.isDefault);
-                    await bridge.printHTML(html, { 
-                        ...options, 
-                        deviceName: defaultPrinter ? defaultPrinter.name : undefined,
-                        silent: Boolean(defaultPrinter) 
-                    });
-                    return;
-                }
+        // If no printers at all and silent printing was requested
+        if (printers.length === 0 && options.silent !== false) {
+            throw new NoPrintersDetectedError('No installed printers detected on this computer.');
+        }
+
+        // If a specific printer name was requested, verify it exists
+        if (options.deviceName && printers.length > 0) {
+            const found = printers.some(p => p.name === options.deviceName);
+            if (!found) {
+                console.warn(`[POS Print] Configured printer "${options.deviceName}" not detected. Falling back to default printer.`);
+                const defaultPrinter = printers.find(p => p.isDefault) || printers[0];
+                options = {
+                    ...options,
+                    deviceName: defaultPrinter?.name,
+                };
             }
         }
 
