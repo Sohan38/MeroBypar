@@ -572,6 +572,13 @@ export interface FeatureConfig {
   };
 }
 
+export interface PrinterSettings {
+  deviceName?: string;         // Name of system printer or empty for default
+  paperWidth: '58mm' | '80mm'; // 58mm or 80mm thermal roll
+  silentPrint: boolean;        // true = fast direct print without OS dialog
+  autoPrintOnSale?: boolean;   // true = automatically print receipt on POS checkout
+}
+
 export interface AppSettings {
   businessName: string;
   businessLogoBase64: string | null;
@@ -587,6 +594,7 @@ export interface AppSettings {
   language: string;
   features: FeatureConfig;
   financialAccountMapping?: Partial<Record<Exclude<PaymentMethod, 'split' | 'credit'>, string>>;
+  printerSettings?: PrinterSettings;
 }
 
 export type UserRole = 'admin' | 'manager' | 'cashier' | 'receptionist' | 'staff';

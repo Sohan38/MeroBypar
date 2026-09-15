@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, useCallback } from 'react';
 import { useApp } from '@/contexts/AppContext';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
@@ -10,11 +10,12 @@ import { FeatureConfig } from '@/types';
 import LicenseCard from './License';
 import { LocationsTab } from './Locations';
 import { useLicense } from '@/license/LicenseContext';
-import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database, Building, Globe, Key, Settings as SettingsIcon, Lock, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database, Building, Globe, Key, Settings as SettingsIcon, Lock, RefreshCw, CheckCircle2, Printer, Laptop, AlertCircle, Zap, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { seedDemoData } from '@/utils/seedHelper';
+import { getSystemPrinters, SystemPrinterInfo, printHTMLDocument, getPrintPlatform } from '@/services/printService';
 //finals
 export default function Settings() {
   const { settings, updateSettings, theme, setTheme } = useApp();
@@ -24,7 +25,7 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window !== 'undefined') {
       const tab = new URLSearchParams(window.location.search).get('tab');
-      if (tab && ['profile', 'preferences', 'locations', 'license', 'data', 'diagnostics'].includes(tab)) {
+      if (tab && ['profile', 'preferences', 'hardware', 'locations', 'license', 'data', 'diagnostics'].includes(tab)) {
         return tab;
       }
     }
@@ -32,6 +33,90 @@ export default function Settings() {
   });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Hardware printer states
+  const [systemPrinters, setSystemPrinters] = useState<SystemPrinterInfo[]>([]);
+  const [isLoadingPrinters, setIsLoadingPrinters] = useState(false);
+  const [isTestingPrinter, setIsTestingPrinter] = useState(false);
+  const isDesktop = typeof window !== 'undefined' && getPrintPlatform() === 'desktop';
+
+  const refreshPrinters = useCallback(async () => {
+    setIsLoadingPrinters(true);
+    try {
+      const list = await getSystemPrinters();
+      setSystemPrinters(list);
+    } catch (err) {
+      console.warn('Failed to load printers:', err);
+    } finally {
+      setIsLoadingPrinters(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'hardware' && isDesktop) {
+      refreshPrinters();
+    }
+  }, [activeTab, isDesktop, refreshPrinters]);
+
+  const handleTestPrint = async () => {
+    setIsTestingPrinter(true);
+    try {
+      const pConfig = formData.printerSettings;
+      const currentPrinter = pConfig?.deviceName || '';
+      const paperWidthPx = pConfig?.paperWidth === '58mm' ? '220px' : '302px';
+      const now = new Date();
+      const testHtml = `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Printer Test</title>
+  <style>
+    @page { margin: 0; }
+    body {
+      margin: 0;
+      padding: 12px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 11px;
+      line-height: 1.4;
+      width: ${paperWidthPx};
+      color: #000;
+      background: #fff;
+    }
+    .center { text-align: center; }
+    .bold { font-weight: bold; }
+    .title { font-size: 13px; font-weight: 900; letter-spacing: 1px; }
+    .divider { border-top: 1px dashed #000; margin: 8px 0; }
+    .row { display: flex; justify-content: space-between; }
+  </style>
+</head>
+<body>
+  <div class="center title">${formData.businessName || 'MeroByapar POS'}</div>
+  <div class="center bold">*** PRINTER TEST SLIP ***</div>
+  <div class="divider"></div>
+  <div class="row"><span>Status:</span><span class="bold">ONLINE / OK</span></div>
+  <div class="row"><span>Printer:</span><span>${currentPrinter || 'Default System Printer'}</span></div>
+  <div class="row"><span>Paper Roll:</span><span>${pConfig?.paperWidth || '80mm'}</span></div>
+  <div class="row"><span>Mode:</span><span>${pConfig?.silentPrint !== false ? 'Instant Silent' : 'System Dialog'}</span></div>
+  <div class="row"><span>Date:</span><span>${now.toLocaleDateString()}</span></div>
+  <div class="row"><span>Time:</span><span>${now.toLocaleTimeString()}</span></div>
+  <div class="divider"></div>
+  <div class="center">Thermal printer communication is working perfectly!</div>
+  <br><br><br>
+</body>
+</html>`;
+
+      await printHTMLDocument(testHtml, {
+        title: 'Printer Test',
+        silent: pConfig?.silentPrint ?? true,
+        deviceName: currentPrinter || undefined,
+      });
+      toast.success('Test slip sent to printer!');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Test print failed');
+    } finally {
+      setIsTestingPrinter(false);
+    }
+  };
 
   // Sync state if settings are loaded/restored asynchronously
   useEffect(() => {
@@ -219,7 +304,7 @@ export default function Settings() {
           </p>
         </div>
         {/* Desktop Save Button (hidden on mobile, visible only when dirty and on editable tab) */}
-        {isDirty && (activeTab === 'profile' || activeTab === 'preferences') && (
+        {isDirty && (activeTab === 'profile' || activeTab === 'preferences' || activeTab === 'hardware') && (
           <div className="hidden sm:block">
             <Button onClick={handleSave} size="default" className="shadow-sm">
               <Save className="mr-2 h-4 w-4" /> Save Changes
@@ -241,6 +326,9 @@ export default function Settings() {
             </TabsTrigger>
             <TabsTrigger value="preferences" className="flex-1 min-w-22.5 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
               <Globe className="h-3.5 w-3.5" /> Preferences
+            </TabsTrigger>
+            <TabsTrigger value="hardware" className="flex-1 min-w-22.5 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
+              <Printer className="h-3.5 w-3.5" /> Hardware
             </TabsTrigger>
             <TabsTrigger value="locations" className="flex-1 min-w-24 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
               <Building className="h-3.5 w-3.5" /> Locations
@@ -389,6 +477,272 @@ export default function Settings() {
           </Card>
         </TabsContent>
 
+        {/* Tab: Hardware & Thermal Printers */}
+        <TabsContent value="hardware" className="outline-none space-y-4">
+          <Card className="border border-border shadow-sm">
+            <CardHeader className="p-4 sm:p-6 pb-3 sm:pb-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div>
+                  <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                    <Printer className="h-5 w-5 text-primary" /> Thermal Receipt Printer
+                  </CardTitle>
+                  <CardDescription className="text-xs">
+                    Configure direct thermal POS printing, paper sizes, and hardware auto-routing.
+                  </CardDescription>
+                </div>
+                {isDesktop && (
+                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-[11px] font-medium bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                    <Laptop className="h-3.5 w-3.5" /> Desktop Engine Active
+                  </span>
+                )}
+              </div>
+            </CardHeader>
+
+            <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0 space-y-5">
+              {/* If no printers detected on desktop */}
+              {isDesktop && !isLoadingPrinters && systemPrinters.length === 0 && (
+                <div className="p-3.5 rounded-lg border border-amber-500/30 bg-amber-500/10 text-amber-900 dark:text-amber-200 text-xs space-y-2">
+                  <div className="flex items-center gap-2 font-semibold text-amber-700 dark:text-amber-300">
+                    <AlertCircle className="h-4 w-4 shrink-0" />
+                    No Installed Printers Detected
+                  </div>
+                  <p className="text-muted-foreground dark:text-amber-200/80 leading-relaxed">
+                    No physical thermal printers or virtual spoolers were detected on this Windows PC. Make sure your printer is plugged in via USB/Network and recognized in Windows Devices.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={refreshPrinters}
+                      className="h-7 text-xs bg-background"
+                    >
+                      <RefreshCw className="h-3 w-3 mr-1.5" /> Rescan Hardware
+                    </Button>
+                    <span className="text-[11px] text-muted-foreground">
+                      POS will fall back to System Print Dialog until a printer is connected.
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Printer Device Selection */}
+              <div className="space-y-2">
+                <div className="flex items-center justify-between">
+                  <label className="text-xs font-semibold text-muted-foreground flex items-center gap-1.5">
+                    Target Printer Device
+                  </label>
+                  {isDesktop && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={refreshPrinters}
+                      disabled={isLoadingPrinters}
+                      className="h-6 text-[11px] px-2 text-muted-foreground hover:text-foreground"
+                    >
+                      <RefreshCw className={`h-3 w-3 mr-1 ${isLoadingPrinters ? 'animate-spin' : ''}`} />
+                      Refresh List
+                    </Button>
+                  )}
+                </div>
+
+                {isDesktop ? (
+                  <Select
+                    value={formData.printerSettings?.deviceName || 'DEFAULT_SYSTEM_PRINTER'}
+                    onValueChange={(val) => {
+                      const deviceName = val === 'DEFAULT_SYSTEM_PRINTER' ? '' : val;
+                      setFormData({
+                        ...formData,
+                        printerSettings: {
+                          paperWidth: formData.printerSettings?.paperWidth || '80mm',
+                          silentPrint: formData.printerSettings?.silentPrint ?? true,
+                          autoPrintOnSale: formData.printerSettings?.autoPrintOnSale ?? false,
+                          deviceName,
+                        },
+                      });
+                    }}
+                  >
+                    <SelectTrigger className="h-10 sm:h-11">
+                      <SelectValue placeholder="Select a printer" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="DEFAULT_SYSTEM_PRINTER">
+                        <span className="flex items-center gap-2 font-medium">
+                          ⚡ System Default Printer (Auto-Route)
+                        </span>
+                      </SelectItem>
+                      {systemPrinters.map((p) => (
+                        <SelectItem key={p.name} value={p.name}>
+                          <span className="flex items-center gap-2">
+                            {p.name} {p.isDefault ? '(Default)' : ''}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <div className="p-3 rounded-lg border border-border bg-muted/30 text-xs text-muted-foreground">
+                    Web & Mobile use native platform print handlers automatically. To assign dedicated USB thermal printers with zero-dialog instant printing, run the MeroByapar Electron Desktop app.
+                  </div>
+                )}
+              </div>
+
+              {/* Thermal Paper Roll Width */}
+              <div className="space-y-2">
+                <label className="text-xs font-semibold text-muted-foreground">
+                  Receipt Paper Roll Width
+                </label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData({
+                        ...formData,
+                        printerSettings: {
+                          deviceName: formData.printerSettings?.deviceName || '',
+                          silentPrint: formData.printerSettings?.silentPrint ?? true,
+                          autoPrintOnSale: formData.printerSettings?.autoPrintOnSale ?? false,
+                          paperWidth: '80mm',
+                        },
+                      });
+                    }}
+                    className={`p-3 rounded-lg border text-left transition-all ${
+                      (formData.printerSettings?.paperWidth || '80mm') === '80mm'
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                        : 'border-border hover:bg-muted/40'
+                    }`}
+                  >
+                    <div className="font-semibold text-xs flex items-center justify-between">
+                      <span>80 mm (Standard)</span>
+                      {(formData.printerSettings?.paperWidth || '80mm') === '80mm' && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Recommended for standard POS thermal receipt printers (Epson, Star, POS-80).
+                    </p>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setFormData({
+                        ...formData,
+                        printerSettings: {
+                          deviceName: formData.printerSettings?.deviceName || '',
+                          silentPrint: formData.printerSettings?.silentPrint ?? true,
+                          autoPrintOnSale: formData.printerSettings?.autoPrintOnSale ?? false,
+                          paperWidth: '58mm',
+                        },
+                      });
+                    }}
+                    className={`p-3 rounded-lg border text-left transition-all ${
+                      formData.printerSettings?.paperWidth === '58mm'
+                        ? 'border-primary bg-primary/5 ring-1 ring-primary'
+                        : 'border-border hover:bg-muted/40'
+                    }`}
+                  >
+                    <div className="font-semibold text-xs flex items-center justify-between">
+                      <span>58 mm (Compact)</span>
+                      {formData.printerSettings?.paperWidth === '58mm' && (
+                        <Check className="h-4 w-4 text-primary" />
+                      )}
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      For mini 2-inch Bluetooth/USB portable thermal printers.
+                    </p>
+                  </button>
+                </div>
+              </div>
+
+              {/* Instant Silent Print & Auto Print */}
+              <div className="space-y-3 pt-2">
+                <div
+                  onClick={() => {
+                    const currentSilent = formData.printerSettings?.silentPrint ?? true;
+                    setFormData({
+                      ...formData,
+                      printerSettings: {
+                        deviceName: formData.printerSettings?.deviceName || '',
+                        paperWidth: formData.printerSettings?.paperWidth || '80mm',
+                        autoPrintOnSale: formData.printerSettings?.autoPrintOnSale ?? false,
+                        silentPrint: !currentSilent,
+                      },
+                    });
+                  }}
+                  className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/20 cursor-pointer select-none"
+                >
+                  <input
+                    type="checkbox"
+                    checked={formData.printerSettings?.silentPrint ?? true}
+                    onChange={() => {}}
+                    className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                  />
+                  <div>
+                    <div className="text-xs font-semibold text-foreground flex items-center gap-1.5">
+                      <Zap className="h-3.5 w-3.5 text-amber-500 fill-amber-500" />
+                      Direct Silent Print (Instant POS Mode)
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      Bypasses the 3-second Windows print dialog. Print jobs are dispatched directly to the thermal printer spooler in &lt; 100ms.
+                    </p>
+                  </div>
+                </div>
+
+                <div
+                  onClick={() => {
+                    const currentAuto = formData.printerSettings?.autoPrintOnSale ?? false;
+                    setFormData({
+                      ...formData,
+                      printerSettings: {
+                        deviceName: formData.printerSettings?.deviceName || '',
+                        paperWidth: formData.printerSettings?.paperWidth || '80mm',
+                        silentPrint: formData.printerSettings?.silentPrint ?? true,
+                        autoPrintOnSale: !currentAuto,
+                      },
+                    });
+                  }}
+                  className="flex items-start gap-3 p-3 rounded-lg border border-border hover:bg-muted/20 cursor-pointer select-none"
+                >
+                  <input
+                    type="checkbox"
+                    checked={formData.printerSettings?.autoPrintOnSale ?? false}
+                    onChange={() => {}}
+                    className="mt-0.5 h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                  />
+                  <div>
+                    <div className="text-xs font-semibold text-foreground">
+                      Auto-Print Immediately on POS Checkout
+                    </div>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      When enabled, completing a sale at the POS register will instantly feed and cut a bill receipt without asking for confirmation.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Hardware Test Action */}
+              <div className="pt-3 border-t border-border flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+                <div className="text-xs text-muted-foreground">
+                  Verify paper alignment, font sharpness, and cutter action.
+                </div>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={handleTestPrint}
+                  disabled={isTestingPrinter}
+                  className="shadow-sm"
+                >
+                  <Printer className="h-4 w-4 mr-2" />
+                  {isTestingPrinter ? 'Printing Test Slip…' : 'Print Test Slip'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
         {/* Tab 3: Locations */}
         <TabsContent value="locations" className="outline-none">
           <LocationsTab />
@@ -532,8 +886,8 @@ export default function Settings() {
         </TabsContent>
       </Tabs>
 
-      {/* Floating Bottom Sticky Action Bar for Mobile (rendered only when dirty on profile/preferences tabs) */}
-      {isDirty && (activeTab === 'profile' || activeTab === 'preferences') && (
+      {/* Floating Bottom Sticky Action Bar for Mobile (rendered only when dirty on editable tabs) */}
+      {isDirty && (activeTab === 'profile' || activeTab === 'preferences' || activeTab === 'hardware') && (
         <div className="sm:hidden fixed bottom-19 left-1/2 -translate-x-1/2 w-[calc(100%-2rem)] max-w-sm bg-card/90 dark:bg-card/95 backdrop-blur-md border border-border p-2 rounded-full flex items-center justify-between z-30 shadow-xl animate-in fade-in slide-in-from-bottom-5 duration-300">
           <span className="text-xs font-medium text-foreground pl-3">
             Unsaved changes

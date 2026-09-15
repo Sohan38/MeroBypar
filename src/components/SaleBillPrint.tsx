@@ -20,13 +20,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from '@/components/ui/dialog';
-import { Printer, X, Loader2 } from 'lucide-react';
+import { Printer, X, Loader2, FileText } from 'lucide-react';
 import { toast } from 'sonner';
 
 import type { SaleInvoice, AppSettings } from '@/types';
 import { useBackModal } from '@/contexts/NavigationContext';
 import { generateReceiptHTML } from '@/services/receiptTemplate';
-import { printHTMLDocument } from '@/services/printService';
+import { printHTMLDocument, getPrintPlatform } from '@/services/printService';
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -67,15 +67,26 @@ export function SaleBillPrint({
   onClose,
 }: SaleBillPrintProps) {
   const [isPrinting, setIsPrinting] = useState(false);
+  const isDesktop = getPrintPlatform() === 'desktop';
+  const printerConfig = settings.printerSettings;
 
   useBackModal(open, onClose, 'sale-bill-print');
 
   // ── Print handler ──────────────────────────────────────────────────────────
-  const handlePrint = useCallback(async () => {
+  const handlePrint = useCallback(async (forceDialog = false) => {
     setIsPrinting(true);
     try {
-      const html = generateReceiptHTML({ sale, settings, customerName });
-      await printHTMLDocument(html, { title: `Receipt #${sale.id.slice(-8).toUpperCase()}` });
+      const paperWidth = printerConfig?.paperWidth === '58mm' ? 'narrow' : 'standard';
+      const html = generateReceiptHTML({ sale, settings, customerName }, { paperWidth });
+      
+      const isSilent = forceDialog ? false : (printerConfig?.silentPrint ?? true);
+      const deviceName = forceDialog ? undefined : (printerConfig?.deviceName || undefined);
+
+      await printHTMLDocument(html, {
+        title: `Receipt #${sale.id.slice(-8).toUpperCase()}`,
+        silent: isSilent,
+        deviceName,
+      });
     } catch (err) {
       const msg =
         err instanceof Error ? err.message : 'Print failed. Please try again.';
@@ -83,7 +94,7 @@ export function SaleBillPrint({
     } finally {
       setIsPrinting(false);
     }
-  }, [sale, settings, customerName]);
+  }, [sale, settings, customerName, printerConfig]);
 
   // ── Derived display values ─────────────────────────────────────────────────
   const subtotal = sale.items.reduce((s, i) => s + i.subtotal, 0);
@@ -122,7 +133,7 @@ export function SaleBillPrint({
               shadow font-mono text-[10px] leading-[1.45]
               border border-gray-200
             "
-            style={{ maxWidth: '302px', padding: '12px 14px' }}
+            style={{ maxWidth: printerConfig?.paperWidth === '58mm' ? '220px' : '302px', padding: '12px 14px' }}
           >
             {/* ── Store header ─────────────────────────────────────────── */}
             <div className="text-center mb-2">
@@ -249,7 +260,7 @@ export function SaleBillPrint({
         </div>
 
         {/* ── Action buttons ─────────────────────────────────────────────── */}
-        <div className="flex gap-2 p-3 border-t bg-muted/10 shrink-0">
+        <div className="flex items-center gap-2 p-3 border-t bg-muted/10 shrink-0">
           <Button
             variant="outline"
             className="flex-1"
@@ -260,9 +271,22 @@ export function SaleBillPrint({
             Close
           </Button>
 
+          {isDesktop && (
+            <Button
+              variant="outline"
+              size="icon"
+              title="Print via Windows System Dialog / Save to PDF"
+              onClick={() => handlePrint(true)}
+              disabled={isPrinting}
+              className="h-9 w-9 shrink-0 text-muted-foreground hover:text-foreground"
+            >
+              <FileText className="h-4 w-4" />
+            </Button>
+          )}
+
           <Button
             className="flex-1"
-            onClick={handlePrint}
+            onClick={() => handlePrint(false)}
             disabled={isPrinting}
           >
             {isPrinting ? (
@@ -273,7 +297,7 @@ export function SaleBillPrint({
             ) : (
               <>
                 <Printer className="h-4 w-4 mr-2" />
-                Print
+                {isDesktop && (printerConfig?.silentPrint ?? true) ? 'Print (Instant)' : 'Print'}
               </>
             )}
           </Button>

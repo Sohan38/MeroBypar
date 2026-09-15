@@ -49,12 +49,41 @@ export function isNativeMobile(): boolean {
     return getPrintPlatform() === 'mobile';
 }
 
-// ─── Public print API ─────────────────────────────────────────────────────────
+export interface SystemPrinterInfo {
+    name: string;
+    displayName?: string;
+    description?: string;
+    status: number;
+    isDefault: boolean;
+}
 
 export interface PrintOptions {
     title?: string;
     silent?: boolean;
     deviceName?: string;
+}
+
+export interface PrintResult {
+    success: boolean;
+    fallbackUsed?: boolean;
+    message?: string;
+}
+
+/**
+ * Returns available system printers when running in Electron.
+ * Returns empty array on Web and Android.
+ */
+export async function getSystemPrinters(): Promise<SystemPrinterInfo[]> {
+    try {
+        const bridge = (window as any).electronAPI;
+        if (typeof bridge?.getPrinters === 'function') {
+            const list = await bridge.getPrinters();
+            if (Array.isArray(list)) return list;
+        }
+    } catch (e) {
+        console.warn('Failed to query system printers:', e);
+    }
+    return [];
 }
 
 /**
@@ -96,6 +125,34 @@ async function printViaAndroidManager(html: string, title = 'Receipt'): Promise<
 async function printViaDesktopBridge(html: string, options: PrintOptions = {}): Promise<void> {
     const bridge = (window as any).electronAPI;
     if (typeof bridge?.printHTML === 'function') {
+        // If silent print requested, verify printer availability first
+        if (options.silent) {
+            const printers = await getSystemPrinters();
+            
+            if (printers.length === 0) {
+                // No printers installed on Windows — gracefully fall back to OS dialog
+                console.warn('[POS Print] No installed printers found. Falling back to system dialog.');
+                await bridge.printHTML(html, { ...options, silent: false, deviceName: undefined });
+                return;
+            }
+
+            // If a specific printer name was requested, check if it is still connected
+            if (options.deviceName) {
+                const found = printers.some(p => p.name === options.deviceName);
+                if (!found) {
+                    console.warn(`[POS Print] Configured printer "${options.deviceName}" not detected. Falling back to default printer.`);
+                    // Fall back to system default printer or dialog
+                    const defaultPrinter = printers.find(p => p.isDefault);
+                    await bridge.printHTML(html, { 
+                        ...options, 
+                        deviceName: defaultPrinter ? defaultPrinter.name : undefined,
+                        silent: Boolean(defaultPrinter) 
+                    });
+                    return;
+                }
+            }
+        }
+
         await bridge.printHTML(html, options);
         return;
     }

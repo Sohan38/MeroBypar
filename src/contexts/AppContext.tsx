@@ -57,6 +57,12 @@ const defaultSettings: AppSettings = {
   theme: 'system',
   language: 'en',
   features: defaultFeatures,
+  printerSettings: {
+    deviceName: '',
+    paperWidth: '80mm',
+    silentPrint: true,
+    autoPrintOnSale: false,
+  },
 };
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
