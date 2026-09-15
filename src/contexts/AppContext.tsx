@@ -62,6 +62,15 @@ const defaultSettings: AppSettings = {
     paperWidth: '80mm',
     silentPrint: true,
     autoPrintOnSale: false,
+    receiptCustomization: {
+      invoiceTitle: 'TAX INVOICE',
+      footerMessage: 'Thank you for your visit!',
+      showPanVat: true,
+      showCustomerName: true,
+      showCashier: true,
+      showItemCount: true,
+      showTaxBreakdown: true,
+    },
   },
 };
 

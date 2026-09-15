@@ -61,6 +61,7 @@ export interface PrintOptions {
     title?: string;
     silent?: boolean;
     deviceName?: string;
+    paperWidth?: '58mm' | '80mm';
 }
 
 export class NoPrintersDetectedError extends Error {
@@ -98,7 +99,7 @@ export async function getSystemPrinters(): Promise<SystemPrinterInfo[]> {
  * Automatically selects the correct strategy for the current platform.
  *
  * @param html    A full `<!DOCTYPE html>…</html>` string
- * @param options Optional title, silent flag, and device name
+ * @param options Optional title, silent flag, device name, and paper width
  * @returns       Resolves when printing has been initiated (not necessarily finished)
  */
 export function printHTMLDocument(
@@ -107,7 +108,7 @@ export function printHTMLDocument(
 ): Promise<void> {
     const platform = getPrintPlatform();
     if (platform === 'mobile') {
-        return printViaAndroidManager(html, options.title);
+        return printViaAndroidManager(html, options);
     }
     if (platform === 'desktop') {
         return printViaDesktopBridge(html, options);
@@ -115,11 +116,15 @@ export function printHTMLDocument(
     return printViaPopup(html, options.title);
 }
 
-async function printViaAndroidManager(html: string, title = 'Receipt'): Promise<void> {
+async function printViaAndroidManager(html: string, options: PrintOptions = {}): Promise<void> {
     try {
         const { registerPlugin } = await import('@capacitor/core');
-        const NativePrint = registerPlugin<{ print(options: { html: string; title: string }): Promise<{ started: boolean }> }>('NativePrint');
-        await NativePrint.print({ html, title });
+        const NativePrint = registerPlugin<{ print(options: { html: string; title: string; paperWidth?: string }): Promise<{ started: boolean }> }>('NativePrint');
+        await NativePrint.print({
+            html,
+            title: options.title || 'Receipt',
+            paperWidth: options.paperWidth || '80mm',
+        });
     } catch (error) {
         throw new Error(
             error instanceof Error

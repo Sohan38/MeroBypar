@@ -77,9 +77,13 @@ export function SaleBillPrint({
   const [isPrinting, setIsPrinting] = useState(false);
   const [systemPrinters, setSystemPrinters] = useState<SystemPrinterInfo[]>([]);
   const [showNoPrinterDialog, setShowNoPrinterDialog] = useState(false);
-  const { updateSettings } = useApp();
+  const { settings: currentSettings, updateSettings, currentUser } = useApp();
   const isDesktop = getPrintPlatform() === 'desktop';
-  const printerConfig = settings.printerSettings;
+  
+  // Always use the latest settings from AppContext if available
+  const activeSettings = currentSettings || settings;
+  const printerConfig = activeSettings.printerSettings;
+  const customization = printerConfig?.receiptCustomization;
 
   useBackModal(open, onClose, 'sale-bill-print');
 
@@ -97,7 +101,18 @@ export function SaleBillPrint({
     setIsPrinting(true);
     try {
       const paperWidth = printerConfig?.paperWidth === '58mm' ? 'narrow' : 'standard';
-      const html = generateReceiptHTML({ sale, settings, customerName }, { paperWidth });
+      const html = generateReceiptHTML(
+        { 
+          sale, 
+          settings: activeSettings, 
+          customerName, 
+          cashierName: currentUser?.name 
+        }, 
+        { 
+          paperWidth,
+          customization,
+        }
+      );
       
       const isSilent = forceDialog ? false : (printerConfig?.silentPrint ?? true);
       const deviceName = forceDialog 
@@ -108,6 +123,7 @@ export function SaleBillPrint({
         title: `Receipt #${sale.id.slice(-8).toUpperCase()}`,
         silent: isSilent,
         deviceName,
+        paperWidth: printerConfig?.paperWidth || '80mm',
       });
     } catch (err) {
       if (err instanceof NoPrintersDetectedError || (err instanceof Error && err.name === 'NoPrintersDetectedError')) {
@@ -121,20 +137,31 @@ export function SaleBillPrint({
     } finally {
       setIsPrinting(false);
     }
-  }, [sale, settings, customerName, printerConfig]);
+  }, [sale, activeSettings, customerName, printerConfig, customization, currentUser]);
 
   // ── Derived display values ─────────────────────────────────────────────────
   const subtotal = sale.items.reduce((s, i) => s + i.subtotal, 0);
+  const totalUnits = sale.items.reduce((s, i) => s + (Number(i.quantity) || 0), 0);
   const change =
     sale.paidAmount > sale.grandTotal ? sale.paidAmount - sale.grandTotal : 0;
   const billId = sale.id.slice(-8).toUpperCase();
-  const sym = settings.currencySymbol || 'Rs';
+  const sym = activeSettings.currencySymbol || 'Rs';
   const fmt = (n: number) => `${sym}\u00a0${n.toFixed(2)}`;
   const pmtLabel = PAYMENT_LABELS[sale.paymentMethod] ?? sale.paymentMethod;
 
   const saleDate = parseSaleDate(sale.date);
   const billDate = formatDate(saleDate, 'dd/MM/yyyy');
   const billTime = formatDate(saleDate, 'hh:mm a');
+
+  const invoiceTitle = customization?.invoiceTitle?.trim() || (activeSettings.vatNumber ? 'TAX INVOICE' : 'SALES RECEIPT');
+  const footerMessage = customization?.footerMessage?.trim() || activeSettings.receiptFooter || 'Thank you for your visit!';
+  const showPanVat = customization?.showPanVat !== false;
+  const showCustomer = customization?.showCustomerName !== false;
+  const showCashier = customization?.showCashier !== false;
+  const showItemCount = customization?.showItemCount !== false;
+  const showTaxBreakdown = customization?.showTaxBreakdown !== false;
+
+  const isNarrow = printerConfig?.paperWidth === '58mm';
 
   // ─────────────────────────────────────────────────────────────────────────
   return (
@@ -145,7 +172,7 @@ export function SaleBillPrint({
           <DialogHeader className="px-4 py-3 border-b shrink-0">
             <DialogTitle className="flex items-center gap-2 text-sm font-semibold">
               <Printer className="h-4 w-4" />
-              Receipt Preview
+              Receipt Preview ({printerConfig?.paperWidth || '80mm'})
             </DialogTitle>
           </DialogHeader>
 
@@ -166,6 +193,7 @@ export function SaleBillPrint({
                       silentPrint: printerConfig?.silentPrint ?? true,
                       autoPrintOnSale: printerConfig?.autoPrintOnSale ?? false,
                       deviceName,
+                      receiptCustomization: customization,
                     },
                   });
                 }}
@@ -182,50 +210,57 @@ export function SaleBillPrint({
           )}
 
           {/* ── Scrollable receipt preview ─────────────────────────────────── */}
-          <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-neutral-800 p-3 min-h-0">
+          <div className="flex-1 overflow-y-auto bg-gray-100 dark:bg-neutral-800 p-3 min-h-0 flex justify-center">
             {/*
-             * The preview uses the same visual structure as the printed HTML
-             * but rendered with Tailwind / React for screen fidelity.
+             * The preview uses the exact visual structure as the printed HTML
+             * with true POS thermal roll proportions.
              */}
             <div
               className="
-                bg-white text-black mx-auto rounded
-                shadow font-mono text-[10px] leading-[1.45]
-                border border-gray-200
+                bg-white text-black rounded shadow font-mono text-[10px] leading-[1.35]
+                border border-gray-200 w-full select-none
               "
-              style={{ maxWidth: printerConfig?.paperWidth === '58mm' ? '220px' : '302px', padding: '12px 14px' }}
+              style={{ 
+                maxWidth: isNarrow ? '200px' : '280px', 
+                padding: isNarrow ? '8px 10px' : '12px 14px' 
+              }}
             >
               {/* ── Store header ─────────────────────────────────────────── */}
-              <div className="text-center mb-2">
-                <div className="font-black text-[13px] uppercase tracking-widest leading-tight">
-                  {settings.businessName || 'Business Name'}
+              <div className="text-center mb-1.5">
+                <div className="font-black text-[13px] uppercase tracking-wide leading-tight">
+                  {activeSettings.businessName || 'MeroByapar Store'}
                 </div>
-                {settings.address && (
-                  <div className="text-[9px] text-gray-500 mt-0.5">
-                    {settings.address}
+                {activeSettings.address && (
+                  <div className="text-[9px] text-gray-600 mt-0.5">
+                    {activeSettings.address}
                   </div>
                 )}
-                {settings.phone && (
-                  <div className="text-[9px] text-gray-500">
-                    Tel: {settings.phone}
+                {activeSettings.phone && (
+                  <div className="text-[9px] text-gray-600">
+                    Tel: {activeSettings.phone}
                   </div>
                 )}
-                {settings.vatNumber && (
-                  <div className="text-[9px] text-gray-500">
-                    VAT/PAN: {settings.vatNumber}
+                {showPanVat && activeSettings.vatNumber && (
+                  <div className="text-[9px] text-gray-700 font-bold">
+                    PAN/VAT: {activeSettings.vatNumber}
                   </div>
                 )}
+                <div className="text-[10px] font-extrabold uppercase mt-1 tracking-wider">
+                  *** {invoiceTitle} ***
+                </div>
               </div>
 
               <Divider dashed />
 
               {/* ── Transaction meta ──────────────────────────────────────── */}
-              <table className="w-full text-[9.5px]">
+              <table className="w-full text-[9px]">
                 <tbody>
-                  <MetaRow label="Receipt #" value={billId} />
-                  <MetaRow label="Date" value={billDate} />
-                  <MetaRow label="Time" value={billTime} />
-                  {customerName && (
+                  <MetaRow label="Invoice #" value={billId} />
+                  <MetaRow label="Date & Time" value={`${billDate} ${billTime}`} />
+                  {showCashier && currentUser?.name && (
+                    <MetaRow label="Cashier" value={currentUser.name} />
+                  )}
+                  {showCustomer && customerName && (
                     <MetaRow label="Customer" value={customerName} />
                   )}
                   <MetaRow label="Payment" value={pmtLabel} />
@@ -238,10 +273,10 @@ export function SaleBillPrint({
               <table className="w-full border-collapse text-[9px]">
                 <thead>
                   <tr className="border-y border-dashed border-gray-400">
-                    <th className="text-left py-1 font-bold uppercase">Item</th>
-                    <th className="text-center py-1 font-bold uppercase w-6">Qty</th>
-                    <th className="text-right py-1 font-bold uppercase w-12">Price</th>
-                    <th className="text-right py-1 font-bold uppercase w-14">Total</th>
+                    <th className="text-left py-0.5 font-bold uppercase">Item</th>
+                    <th className="text-center py-0.5 font-bold uppercase w-7">Qty</th>
+                    <th className="text-right py-0.5 font-bold uppercase w-11">Rate</th>
+                    <th className="text-right py-0.5 font-bold uppercase w-12">Total</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -249,14 +284,17 @@ export function SaleBillPrint({
                     <tr key={i}>
                       <td className="text-left py-0.5 pr-1 wrap-break-word align-top">
                         {item.productName}
+                        {item.variantName && (
+                          <span className="block text-[8px] text-gray-500">{item.variantName}</span>
+                        )}
                       </td>
-                      <td className="text-center min-w-8 align-top py-0.5 whitespace-nowrap">
-                        {item.quantity}{item.unit ? ` ${item.unit}` : ''}
+                      <td className="text-center min-w-7 align-top py-0.5 whitespace-nowrap">
+                        {item.quantity}{item.unit ? `\u00a0${item.unit}` : ''}
                       </td>
-                      <td className="text-right w-12 align-top py-0.5">
+                      <td className="text-right w-11 align-top py-0.5">
                         {item.sellingRate.toFixed(2)}
                       </td>
-                      <td className="text-right w-14 font-bold align-top py-0.5">
+                      <td className="text-right w-12 font-bold align-top py-0.5">
                         {item.subtotal.toFixed(2)}
                       </td>
                     </tr>
@@ -266,8 +304,19 @@ export function SaleBillPrint({
 
               <Divider dashed />
 
+              {/* ── Unit Count Line ──────────────────────────────────────── */}
+              {showItemCount && (
+                <>
+                  <div className="flex justify-between text-[8.5px] font-semibold text-gray-700 py-0.5">
+                    <span>Total Items: {sale.items.length}</span>
+                    <span>Total Qty: {totalUnits}</span>
+                  </div>
+                  <Divider dashed />
+                </>
+              )}
+
               {/* ── Sub-totals ────────────────────────────────────────────── */}
-              <table className="w-full text-[9.5px]">
+              <table className="w-full text-[9px]">
                 <tbody>
                   <TotalRow label="Subtotal" value={fmt(subtotal)} />
                   {sale.discount > 0 && (
@@ -276,22 +325,20 @@ export function SaleBillPrint({
                       value={`- ${fmt(sale.discount)}`}
                     />
                   )}
-                  {sale.tax > 0 && (
-                    <TotalRow label="Tax" value={fmt(sale.tax)} />
+                  {showTaxBreakdown && sale.tax > 0 && (
+                    <TotalRow label="VAT / Tax" value={fmt(sale.tax)} />
                   )}
                 </tbody>
               </table>
 
               {/* Grand total */}
-              <div className="border-y-2 border-black my-1.5 py-1 flex justify-between font-black text-[13px]">
+              <div className="border-y-2 border-black my-1 py-1 flex justify-between font-black text-[12px] sm:text-[13px]">
                 <span>TOTAL</span>
                 <span>{fmt(sale.grandTotal)}</span>
               </div>
 
-              <Divider dashed />
-
               {/* ── Payment / Change ──────────────────────────────────────── */}
-              <table className="w-full text-[9.5px]">
+              <table className="w-full text-[9px]">
                 <tbody>
                   <TotalRow
                     label={`Paid (${pmtLabel})`}
@@ -303,18 +350,23 @@ export function SaleBillPrint({
                       <td className="text-right font-bold">{fmt(change)}</td>
                     </tr>
                   )}
+                  {sale.dueAmount > 0 && (
+                    <tr className="text-red-600 font-bold">
+                      <td>Due Balance</td>
+                      <td className="text-right">{fmt(sale.dueAmount)}</td>
+                    </tr>
+                  )}
                 </tbody>
               </table>
 
               <Divider dashed />
 
               {/* ── Footer ───────────────────────────────────────────────── */}
-              <div className="text-center text-[9px] text-gray-500 leading-[1.7]">
-                <div className="font-bold text-[10px] text-black">
-                  Thank you for your purchase!
+              <div className="text-center text-[8.5px] text-gray-600 leading-tight pt-0.5 space-y-1">
+                <div className="font-bold text-[9px] text-black">
+                  {footerMessage}
                 </div>
-                <div>Please visit us again</div>
-                {settings.phone && <div>Inquiries: {settings.phone}</div>}
+                <div className="text-[7.5px] text-gray-400">Powered by MeroByapar POS</div>
               </div>
             </div>
           </div>

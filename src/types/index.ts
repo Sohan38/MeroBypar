@@ -572,11 +572,22 @@ export interface FeatureConfig {
   };
 }
 
+export interface ReceiptCustomization {
+  invoiceTitle?: string;         // e.g. "TAX INVOICE" or "SALES RECEIPT"
+  footerMessage?: string;        // e.g. "Goods once sold cannot be returned without bill."
+  showPanVat?: boolean;          // Default true
+  showCustomerName?: boolean;    // Default true
+  showCashier?: boolean;         // Default true
+  showItemCount?: boolean;       // Default true
+  showTaxBreakdown?: boolean;    // Default true
+}
+
 export interface PrinterSettings {
   deviceName?: string;         // Name of system printer or empty for default
   paperWidth: '58mm' | '80mm'; // 58mm or 80mm thermal roll
   silentPrint: boolean;        // true = fast direct print without OS dialog
   autoPrintOnSale?: boolean;   // true = automatically print receipt on POS checkout
+  receiptCustomization?: ReceiptCustomization;
 }
 
 export interface AppSettings {
@@ -585,6 +596,7 @@ export interface AppSettings {
   phone: string;
   address: string;
   vatNumber: string;
+  receiptFooter?: string;
   currency: string;
   currencySymbol: string;
   taxRate: number;

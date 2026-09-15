@@ -6,16 +6,17 @@ import { Button } from '@/components/ui/button';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useStorageProvider } from '@/storage/StorageContext';
-import { FeatureConfig } from '@/types';
+import { FeatureConfig, ReceiptCustomization } from '@/types';
 import LicenseCard from './License';
 import { LocationsTab } from './Locations';
 import { useLicense } from '@/license/LicenseContext';
-import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database, Building, Globe, Key, Settings as SettingsIcon, Lock, RefreshCw, CheckCircle2, Printer, Laptop, AlertCircle, Zap, Check } from 'lucide-react';
+import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database, Building, Globe, Key, Settings as SettingsIcon, Lock, RefreshCw, CheckCircle2, Printer, Laptop, AlertCircle, Zap, Check, FileText, Eye } from 'lucide-react';
 import { toast } from 'sonner';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { seedDemoData } from '@/utils/seedHelper';
 import { getSystemPrinters, SystemPrinterInfo, printHTMLDocument, getPrintPlatform } from '@/services/printService';
+import { generateReceiptHTML } from '@/services/receiptTemplate';
 //finals
 export default function Settings() {
   const { settings, updateSettings, theme, setTheme } = useApp();
@@ -63,52 +64,39 @@ export default function Settings() {
     try {
       const pConfig = formData.printerSettings;
       const currentPrinter = pConfig?.deviceName || '';
-      const paperWidthPx = pConfig?.paperWidth === '58mm' ? '220px' : '302px';
       const now = new Date();
-      const testHtml = `<!DOCTYPE html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <title>Printer Test</title>
-  <style>
-    @page { margin: 0; }
-    body {
-      margin: 0;
-      padding: 12px;
-      font-family: 'Courier New', Courier, monospace;
-      font-size: 11px;
-      line-height: 1.4;
-      width: ${paperWidthPx};
-      color: #000;
-      background: #fff;
-    }
-    .center { text-align: center; }
-    .bold { font-weight: bold; }
-    .title { font-size: 13px; font-weight: 900; letter-spacing: 1px; }
-    .divider { border-top: 1px dashed #000; margin: 8px 0; }
-    .row { display: flex; justify-content: space-between; }
-  </style>
-</head>
-<body>
-  <div class="center title">${formData.businessName || 'MeroByapar POS'}</div>
-  <div class="center bold">*** PRINTER TEST SLIP ***</div>
-  <div class="divider"></div>
-  <div class="row"><span>Status:</span><span class="bold">ONLINE / OK</span></div>
-  <div class="row"><span>Printer:</span><span>${currentPrinter || 'Default System Printer'}</span></div>
-  <div class="row"><span>Paper Roll:</span><span>${pConfig?.paperWidth || '80mm'}</span></div>
-  <div class="row"><span>Mode:</span><span>${pConfig?.silentPrint !== false ? 'Instant Silent' : 'System Dialog'}</span></div>
-  <div class="row"><span>Date:</span><span>${now.toLocaleDateString()}</span></div>
-  <div class="row"><span>Time:</span><span>${now.toLocaleTimeString()}</span></div>
-  <div class="divider"></div>
-  <div class="center">Thermal printer communication is working perfectly!</div>
-  <br><br><br>
-</body>
-</html>`;
+      const testHtml = generateReceiptHTML(
+        {
+          sale: {
+            id: 'TEST-' + Math.floor(100000 + Math.random() * 900000),
+            date: now.toISOString(),
+            paymentMethod: 'cash',
+            paidAmount: 250,
+            grandTotal: 250,
+            dueAmount: 0,
+            discount: 0,
+            tax: 28.76,
+            taxRate: 13,
+            items: [
+              { productName: 'Sample Retail Item 1', quantity: 2, unit: 'pcs', sellingRate: 75, subtotal: 150 },
+              { productName: 'Sample Grocery Item 2', quantity: 1, unit: 'kg', sellingRate: 100, subtotal: 100 },
+            ],
+          } as any,
+          settings: formData,
+          customerName: 'Sample Customer',
+          cashierName: 'Admin',
+        },
+        {
+          paperWidth: pConfig?.paperWidth === '58mm' ? 'narrow' : 'standard',
+          customization: pConfig?.receiptCustomization,
+        }
+      );
 
       await printHTMLDocument(testHtml, {
         title: 'Printer Test',
         silent: pConfig?.silentPrint ?? true,
         deviceName: currentPrinter || undefined,
+        paperWidth: pConfig?.paperWidth || '80mm',
       });
       toast.success('Test slip sent to printer!');
     } catch (err) {
@@ -738,6 +726,229 @@ export default function Settings() {
                   <Printer className="h-4 w-4 mr-2" />
                   {isTestingPrinter ? 'Printing Test Slip…' : 'Print Test Slip'}
                 </Button>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Card 2: Receipt Template & Store Customization */}
+          <Card className="border border-border shadow-sm">
+            <CardHeader className="p-4 sm:p-6 pb-3 sm:pb-3">
+              <CardTitle className="text-base sm:text-lg flex items-center gap-2">
+                <FileText className="h-5 w-5 text-primary" /> Receipt Template &amp; Layout
+              </CardTitle>
+              <CardDescription className="text-xs">
+                Tailor thermal receipt branding, titles, and section visibility for your store type.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-4 sm:p-6 pt-0 sm:pt-0 space-y-6">
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+                {/* Configuration Controls */}
+                <div className="lg:col-span-7 space-y-4">
+                  {/* Header Title */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-muted-foreground">Receipt Header Title</label>
+                    <Input
+                      className="h-9 sm:h-10 text-xs sm:text-sm"
+                      placeholder="e.g. TAX INVOICE, SALES RECEIPT, CASH MEMO"
+                      value={formData.printerSettings?.receiptCustomization?.invoiceTitle ?? 'TAX INVOICE'}
+                      onChange={(e) => {
+                        const newTitle = e.target.value;
+                        setFormData({
+                          ...formData,
+                          printerSettings: {
+                            deviceName: formData.printerSettings?.deviceName || '',
+                            paperWidth: formData.printerSettings?.paperWidth || '80mm',
+                            silentPrint: formData.printerSettings?.silentPrint ?? true,
+                            autoPrintOnSale: formData.printerSettings?.autoPrintOnSale ?? false,
+                            receiptCustomization: {
+                              ...formData.printerSettings?.receiptCustomization,
+                              invoiceTitle: newTitle,
+                            },
+                          },
+                        });
+                      }}
+                    />
+                  </div>
+
+                  {/* Footer Message */}
+                  <div className="space-y-1.5">
+                    <label className="text-xs font-semibold text-muted-foreground">Footer Message &amp; Return Policy</label>
+                    <Input
+                      className="h-9 sm:h-10 text-xs sm:text-sm"
+                      placeholder="e.g. Thank you for your visit! Goods once sold are returnable within 7 days."
+                      value={formData.printerSettings?.receiptCustomization?.footerMessage ?? formData.receiptFooter ?? 'Thank you for your visit!'}
+                      onChange={(e) => {
+                        const newMsg = e.target.value;
+                        setFormData({
+                          ...formData,
+                          receiptFooter: newMsg,
+                          printerSettings: {
+                            deviceName: formData.printerSettings?.deviceName || '',
+                            paperWidth: formData.printerSettings?.paperWidth || '80mm',
+                            silentPrint: formData.printerSettings?.silentPrint ?? true,
+                            autoPrintOnSale: formData.printerSettings?.autoPrintOnSale ?? false,
+                            receiptCustomization: {
+                              ...formData.printerSettings?.receiptCustomization,
+                              footerMessage: newMsg,
+                            },
+                          },
+                        });
+                      }}
+                    />
+                  </div>
+
+                  {/* Section Toggles */}
+                  <div className="space-y-2.5 pt-1">
+                    <label className="text-xs font-semibold text-muted-foreground">Receipt Sections to Include</label>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {[
+                        { key: 'showPanVat', label: 'Show PAN / VAT Number', defaultVal: true },
+                        { key: 'showCustomerName', label: 'Show Customer Name', defaultVal: true },
+                        { key: 'showCashier', label: 'Show Cashier / Operator', defaultVal: true },
+                        { key: 'showItemCount', label: 'Show Item & Unit Count', defaultVal: true },
+                        { key: 'showTaxBreakdown', label: 'Show Tax / VAT Breakdown', defaultVal: true },
+                      ].map((toggle) => {
+                        const isChecked = Boolean(formData.printerSettings?.receiptCustomization?.[toggle.key as keyof ReceiptCustomization] ?? toggle.defaultVal);
+                        return (
+                          <div
+                            key={toggle.key}
+                            onClick={() => {
+                              setFormData({
+                                ...formData,
+                                printerSettings: {
+                                  deviceName: formData.printerSettings?.deviceName || '',
+                                  paperWidth: formData.printerSettings?.paperWidth || '80mm',
+                                  silentPrint: formData.printerSettings?.silentPrint ?? true,
+                                  autoPrintOnSale: formData.printerSettings?.autoPrintOnSale ?? false,
+                                  receiptCustomization: {
+                                    ...formData.printerSettings?.receiptCustomization,
+                                    [toggle.key]: !isChecked,
+                                  },
+                                },
+                              });
+                            }}
+                            className="flex items-center gap-2.5 p-2.5 rounded-lg border border-border bg-muted/20 hover:bg-muted/40 cursor-pointer select-none text-xs"
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => {}}
+                              className="h-3.5 w-3.5 rounded border-border text-primary focus:ring-primary"
+                            />
+                            <span className="font-medium text-foreground">{toggle.label}</span>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Live Preview Column */}
+                <div className="lg:col-span-5 flex flex-col items-center">
+                  <div className="w-full flex items-center justify-between text-xs text-muted-foreground mb-2 px-1">
+                    <span className="font-semibold flex items-center gap-1.5">
+                      <Eye className="h-3.5 w-3.5 text-primary" /> Live Thermal Preview
+                    </span>
+                    <span className="font-mono text-[11px] bg-muted px-2 py-0.5 rounded">
+                      {formData.printerSettings?.paperWidth || '80mm'}
+                    </span>
+                  </div>
+
+                  {/* Simulated Receipt Roll */}
+                  <div
+                    className="bg-white text-black rounded shadow font-mono text-[9px] leading-[1.3] border border-gray-200 w-full select-none"
+                    style={{
+                      maxWidth: (formData.printerSettings?.paperWidth || '80mm') === '58mm' ? '190px' : '260px',
+                      padding: (formData.printerSettings?.paperWidth || '80mm') === '58mm' ? '8px 10px' : '12px 14px',
+                    }}
+                  >
+                    <div className="text-center mb-1">
+                      <div className="font-black text-[11px] uppercase tracking-wide leading-tight">
+                        {formData.businessName || 'MeroByapar Store'}
+                      </div>
+                      {formData.address && <div className="text-[8px] text-gray-600 mt-0.5">{formData.address}</div>}
+                      {formData.phone && <div className="text-[8px] text-gray-600">Tel: {formData.phone}</div>}
+                      {(formData.printerSettings?.receiptCustomization?.showPanVat ?? true) && formData.vatNumber && (
+                        <div className="text-[8px] text-gray-700 font-bold">PAN/VAT: {formData.vatNumber}</div>
+                      )}
+                      <div className="text-[9px] font-extrabold uppercase mt-1 tracking-wider">
+                        *** {formData.printerSettings?.receiptCustomization?.invoiceTitle || (formData.vatNumber ? 'TAX INVOICE' : 'SALES RECEIPT')} ***
+                      </div>
+                    </div>
+
+                    <div className="border-t border-dashed border-gray-400 my-1" />
+
+                    <div className="text-[8px] space-y-0.5">
+                      <div className="flex justify-between"><span className="text-gray-500">Invoice #:</span><span className="font-bold">#INV-8921</span></div>
+                      <div className="flex justify-between"><span className="text-gray-500">Date:</span><span>15/09/2026 04:30 PM</span></div>
+                      {(formData.printerSettings?.receiptCustomization?.showCashier ?? true) && (
+                        <div className="flex justify-between"><span className="text-gray-500">Cashier:</span><span>Admin</span></div>
+                      )}
+                      {(formData.printerSettings?.receiptCustomization?.showCustomerName ?? true) && (
+                        <div className="flex justify-between"><span className="text-gray-500">Customer:</span><span>Walk-in Customer</span></div>
+                      )}
+                    </div>
+
+                    <div className="border-t border-dashed border-gray-400 my-1" />
+
+                    <table className="w-full text-[8px]">
+                      <thead>
+                        <tr className="border-b border-dashed border-gray-300 text-gray-700 font-bold">
+                          <th className="text-left py-0.5">Item</th>
+                          <th className="text-center py-0.5 w-6">Qty</th>
+                          <th className="text-right py-0.5 w-10">Rate</th>
+                          <th className="text-right py-0.5 w-10">Amt</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="py-0.5">Sample Retail Item</td>
+                          <td className="text-center py-0.5">2</td>
+                          <td className="text-right py-0.5">75.00</td>
+                          <td className="text-right py-0.5 font-bold">150.00</td>
+                        </tr>
+                        <tr>
+                          <td className="py-0.5">Sample Store Goods</td>
+                          <td className="text-center py-0.5">1</td>
+                          <td className="text-right py-0.5">100.00</td>
+                          <td className="text-right py-0.5 font-bold">100.00</td>
+                        </tr>
+                      </tbody>
+                    </table>
+
+                    <div className="border-t border-dashed border-gray-400 my-1" />
+
+                    {(formData.printerSettings?.receiptCustomization?.showItemCount ?? true) && (
+                      <>
+                        <div className="flex justify-between text-[7.5px] font-semibold text-gray-700 py-0.5">
+                          <span>Total Items: 2</span>
+                          <span>Total Qty: 3</span>
+                        </div>
+                        <div className="border-t border-dashed border-gray-400 my-1" />
+                      </>
+                    )}
+
+                    <div className="text-[8px] space-y-0.5 font-mono">
+                      <div className="flex justify-between"><span>Subtotal:</span><span>{formData.currencySymbol || 'Rs'} 250.00</span></div>
+                      {(formData.printerSettings?.receiptCustomization?.showTaxBreakdown ?? true) && (
+                        <div className="flex justify-between"><span>VAT (13%):</span><span>{formData.currencySymbol || 'Rs'} 28.76</span></div>
+                      )}
+                      <div className="border-y border-black font-black py-0.5 my-1 flex justify-between text-[9.5px]">
+                        <span>TOTAL:</span><span>{formData.currencySymbol || 'Rs'} 250.00</span>
+                      </div>
+                      <div className="flex justify-between"><span>Paid (Cash):</span><span>{formData.currencySymbol || 'Rs'} 250.00</span></div>
+                    </div>
+
+                    <div className="border-t border-dashed border-gray-400 my-1" />
+
+                    <div className="text-center text-[7.5px] text-gray-600 space-y-0.5 pt-0.5">
+                      <div className="font-bold text-[8px] text-black">
+                        {formData.printerSettings?.receiptCustomization?.footerMessage || formData.receiptFooter || 'Thank you for your visit!'}
+                      </div>
+                      <div className="text-[7px] text-gray-400">Powered by MeroByapar POS</div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </CardContent>
           </Card>
