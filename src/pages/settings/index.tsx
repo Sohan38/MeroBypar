@@ -10,13 +10,25 @@ import { FeatureConfig, ReceiptCustomization } from '@/types';
 import LicenseCard from './License';
 import { LocationsTab } from './Locations';
 import { useLicense } from '@/license/LicenseContext';
-import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database, Building, Globe, Key, Settings as SettingsIcon, Lock, RefreshCw, CheckCircle2, Printer, Laptop, AlertCircle, Zap, Check, FileText, Eye } from 'lucide-react';
+import { Save, Upload, Download, AlertTriangle, Monitor, Moon, Sun, Trash2, Database, Building, Globe, Key, Settings as SettingsIcon, Lock, RefreshCw, CheckCircle2, Printer, Laptop, AlertCircle, Zap, Check, FileText, Eye, ChevronLeft, ChevronRight, MapPin } from 'lucide-react';
 import { toast } from 'sonner';
 import { Spinner } from '@/components/ui/spinner';
 import { ConfirmDialog } from '@/components/ConfirmDialog';
 import { seedDemoData } from '@/utils/seedHelper';
 import { getSystemPrinters, SystemPrinterInfo, printHTMLDocument, getPrintPlatform } from '@/services/printService';
 import { generateReceiptHTML } from '@/services/receiptTemplate';
+import { cn } from '@/lib/utils';
+
+export const SETTINGS_TABS = [
+  { id: 'profile', label: 'Profile', icon: Building },
+  { id: 'preferences', label: 'Preferences', icon: Globe },
+  { id: 'hardware', label: 'Hardware', icon: Printer },
+  { id: 'locations', label: 'Locations', icon: MapPin },
+  { id: 'license', label: 'Activation', icon: Key },
+  { id: 'data', label: 'Database', icon: Database },
+  { id: 'diagnostics', label: 'Diagnostics', icon: RefreshCw },
+] as const;
+
 //finals
 export default function Settings() {
   const { settings, updateSettings, theme, setTheme } = useApp();
@@ -26,12 +38,101 @@ export default function Settings() {
   const [activeTab, setActiveTab] = useState(() => {
     if (typeof window !== 'undefined') {
       const tab = new URLSearchParams(window.location.search).get('tab');
-      if (tab && ['profile', 'preferences', 'hardware', 'locations', 'license', 'data', 'diagnostics'].includes(tab)) {
+      if (tab && SETTINGS_TABS.some(t => t.id === tab)) {
         return tab;
       }
     }
     return 'profile';
   });
+
+  const tabsScrollContainerRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(false);
+
+  const updateScrollIndicators = useCallback(() => {
+    const el = tabsScrollContainerRef.current;
+    if (!el) return;
+    const { scrollLeft, scrollWidth, clientWidth } = el;
+    setCanScrollLeft(scrollLeft > 6);
+    setCanScrollRight(scrollLeft < scrollWidth - clientWidth - 6);
+  }, []);
+
+  const scrollToTab = useCallback((tabId: string, smooth: boolean = true) => {
+    const container = tabsScrollContainerRef.current;
+    if (!container) return;
+    const tabEl = container.querySelector(`[data-tab="${tabId}"]`) as HTMLElement | null;
+    if (!tabEl) return;
+
+    const containerWidth = container.clientWidth;
+    const tabLeft = tabEl.offsetLeft;
+    const tabWidth = tabEl.offsetWidth;
+
+    // Center the target tab in the scrollable bar
+    const targetScroll = tabLeft - (containerWidth / 2) + (tabWidth / 2);
+
+    container.scrollTo({
+      left: Math.max(0, targetScroll),
+      behavior: smooth ? 'smooth' : 'auto',
+    });
+  }, []);
+
+  const handleTabChange = useCallback((newTab: string) => {
+    setActiveTab(newTab);
+    if (typeof window !== 'undefined') {
+      const url = new URL(window.location.href);
+      url.searchParams.set('tab', newTab);
+      window.history.replaceState({}, '', url.toString());
+    }
+  }, []);
+
+  const handleScrollStep = (direction: 'left' | 'right') => {
+    const container = tabsScrollContainerRef.current;
+    if (!container) return;
+    const step = Math.min(220, Math.max(140, container.clientWidth * 0.6));
+    container.scrollBy({
+      left: direction === 'left' ? -step : step,
+      behavior: 'smooth',
+    });
+  };
+
+  // Whenever activeTab changes, auto-center the active tab smoothly
+  useEffect(() => {
+    const timeoutId = setTimeout(() => {
+      scrollToTab(activeTab, true);
+      updateScrollIndicators();
+    }, 40);
+    return () => clearTimeout(timeoutId);
+  }, [activeTab, scrollToTab, updateScrollIndicators]);
+
+  // Initial scroll and resize listener
+  useEffect(() => {
+    updateScrollIndicators();
+    scrollToTab(activeTab, false);
+
+    const container = tabsScrollContainerRef.current;
+    if (!container) return;
+
+    const onScroll = () => {
+      updateScrollIndicators();
+    };
+
+    container.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', updateScrollIndicators);
+
+    const onPopState = () => {
+      const tab = new URLSearchParams(window.location.search).get('tab');
+      if (tab && SETTINGS_TABS.some(t => t.id === tab)) {
+        setActiveTab(tab);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+
+    return () => {
+      container.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', updateScrollIndicators);
+      window.removeEventListener('popstate', onPopState);
+    };
+  }, [updateScrollIndicators, scrollToTab, activeTab]);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -303,34 +404,72 @@ export default function Settings() {
 
       <Tabs
         value={activeTab}
-        onValueChange={setActiveTab}
+        onValueChange={handleTabChange}
         className="space-y-6"
       >
-        {/* Horizontal overflow scrollable tab bar for mobile viewports */}
-        <div className="w-full overflow-x-auto scrollbar-none -mx-3 px-3 sm:mx-0 sm:px-0">
-          <TabsList className="flex w-max sm:w-full border border-border bg-muted/40 p-1 rounded-lg gap-1 min-w-full">
-            <TabsTrigger value="profile" className="flex-1 min-w-20 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
-              <Building className="h-3.5 w-3.5" /> Profile
-            </TabsTrigger>
-            <TabsTrigger value="preferences" className="flex-1 min-w-22.5 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
-              <Globe className="h-3.5 w-3.5" /> Preferences
-            </TabsTrigger>
-            <TabsTrigger value="hardware" className="flex-1 min-w-22.5 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
-              <Printer className="h-3.5 w-3.5" /> Hardware
-            </TabsTrigger>
-            <TabsTrigger value="locations" className="flex-1 min-w-24 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
-              <Building className="h-3.5 w-3.5" /> Locations
-            </TabsTrigger>
-            <TabsTrigger value="license" className="flex-1 min-w-20 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
-              <Key className="h-3.5 w-3.5" /> Activation
-            </TabsTrigger>
-            <TabsTrigger value="data" className="flex-1 min-w-21.25 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
-              <Database className="h-3.5 w-3.5" /> Database
-            </TabsTrigger>
-            <TabsTrigger value="diagnostics" className="flex-1 min-w-24 sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3">
-              <RefreshCw className="h-3.5 w-3.5" /> Diagnostics
-            </TabsTrigger>
-          </TabsList>
+        {/* Dynamic auto-scrolling tab bar with overflow fade indicators */}
+        <div className="relative group/tabs -mx-3 px-3 sm:mx-0 sm:px-0">
+          {/* Left scroll chevron & fade mask */}
+          <div
+            className={cn(
+              "absolute left-0 top-0 bottom-0 z-10 flex items-center pl-1 sm:pl-0 pr-4 sm:pr-6 bg-gradient-to-r from-background via-background/90 to-transparent transition-opacity duration-200 pointer-events-none",
+              canScrollLeft ? "opacity-100" : "opacity-0"
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => handleScrollStep('left')}
+              className="pointer-events-auto h-7 w-7 rounded-full bg-background/95 border border-border shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all active:scale-90"
+              aria-label="Scroll tabs left"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Right scroll chevron & fade mask */}
+          <div
+            className={cn(
+              "absolute right-0 top-0 bottom-0 z-10 flex items-center pr-1 sm:pr-0 pl-4 sm:pl-6 bg-gradient-to-l from-background via-background/90 to-transparent transition-opacity duration-200 pointer-events-none justify-end",
+              canScrollRight ? "opacity-100" : "opacity-0"
+            )}
+          >
+            <button
+              type="button"
+              onClick={() => handleScrollStep('right')}
+              className="pointer-events-auto h-7 w-7 rounded-full bg-background/95 border border-border shadow-md flex items-center justify-center text-muted-foreground hover:text-foreground hover:bg-accent transition-all active:scale-90"
+              aria-label="Scroll tabs right"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </button>
+          </div>
+
+          {/* Horizontal overflow scrollable tab bar with auto-centering */}
+          <div
+            ref={tabsScrollContainerRef}
+            className="w-full overflow-x-auto scroll-smooth touch-pan-x [scrollbar-width:none] [&::-webkit-scrollbar]:hidden py-0.5"
+          >
+            <TabsList className="flex w-max min-w-full border border-border/80 bg-muted/35 dark:bg-muted/20 backdrop-blur-xs p-1 rounded-xl gap-1 shadow-xs">
+              {SETTINGS_TABS.map((tab) => {
+                const Icon = tab.icon;
+                const isActive = activeTab === tab.id;
+                return (
+                  <TabsTrigger
+                    key={tab.id}
+                    value={tab.id}
+                    data-tab={tab.id}
+                    className={cn(
+                      "flex-1 min-w-[5.25rem] sm:min-w-0 flex items-center justify-center gap-1.5 text-xs py-2 px-3 rounded-lg font-medium transition-all duration-200 select-none",
+                      "data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm data-[state=active]:font-semibold",
+                      "hover:text-foreground/90 active:scale-[0.97]"
+                    )}
+                  >
+                    <Icon className={cn("h-3.5 w-3.5 shrink-0 transition-transform duration-200", isActive && "text-primary scale-110")} />
+                    <span>{tab.label}</span>
+                  </TabsTrigger>
+                );
+              })}
+            </TabsList>
+          </div>
         </div>
 
         {/* Tab 1: Profile */}
