@@ -13,84 +13,60 @@ import { AppProvider } from '@/contexts/AppContext';
 import { GlobalProviders } from '@/contexts/GlobalProviders';
 import { NavigationProvider } from '@/contexts/NavigationContext';
 import { Shell } from '@/components/layout/Shell';
-import { isStaleChunkError, markAppBooted, reloadOnceForUpdate } from '@/lib/updateRecovery';
+import { retryLazy } from '@/lib/updateRecovery';
 
-/**
- * Retries a dynamic import up to `retries` times with exponential backoff.
- * Capacitor's WebView can fail to load JS chunks on cold start; this prevents
- * those transient failures from turning into a permanent blank screen.
- */
-function retryLazy<T extends { default: any }>(
-  factory: () => Promise<T>,
-  retries = 3
-): React.LazyExoticComponent<T['default']> {
-  return lazy(() =>
-    factory().catch((err) => {
-      if (isStaleChunkError(err) && reloadOnceForUpdate()) {
-        return new Promise<T>(() => { });
-      }
-      if (retries <= 0) throw err;
-      return new Promise<T>((resolve, reject) =>
-        setTimeout(() => {
-          factory().then(resolve).catch(reject);
-        }, 500)
-      );
-    })
-  );
-}
+const Dashboard = lazy(() => retryLazy(() => import('@/pages/Dashboard')));
+const InventoryList = lazy(() => retryLazy(() => import('@/pages/inventory/List')));
+const InventoryForm = lazy(() => retryLazy(() => import('@/pages/inventory/Form')));
+const InventoryDetail = lazy(() => retryLazy(() => import('@/pages/inventory/Detail')));
+const InventoryMovements = lazy(() => retryLazy(() => import('@/pages/inventory/Movements')));
+const ConsumptionList = lazy(() => retryLazy(() => import('@/pages/inventory/consumption/List').then(m => ({ default: m.ConsumptionList }))));
+const ConsumptionForm = lazy(() => retryLazy(() => import('@/pages/inventory/consumption/Form').then(m => ({ default: m.ConsumptionForm }))));
+const ConsumptionDetail = lazy(() => retryLazy(() => import('@/pages/inventory/consumption/Detail').then(m => ({ default: m.ConsumptionDetail }))));
+const ProductionList = lazy(() => retryLazy(() => import('@/pages/inventory/production/List').then(m => ({ default: m.ProductionList }))));
+const ProductionForm = lazy(() => retryLazy(() => import('@/pages/inventory/production/Form').then(m => ({ default: m.ProductionForm }))));
+const RecipeList = lazy(() => retryLazy(() => import('@/pages/inventory/recipes/List').then(m => ({ default: m.RecipeList }))));
+const RecipeForm = lazy(() => retryLazy(() => import('@/pages/inventory/recipes/Form').then(m => ({ default: m.RecipeForm }))));
+const LocationsList = lazy(() => retryLazy(() => import('@/pages/locations/List')));
+const LocationDetail = lazy(() => retryLazy(() => import('@/pages/locations/Detail')));
+const MoveStock = lazy(() => retryLazy(() => import('@/pages/locations/MoveStock')));
+const SalesPos = lazy(() => retryLazy(() => import('@/pages/sales/Pos')));
+const SalesList = lazy(() => retryLazy(() => import('@/pages/sales/List')));
+const SaleDetail = lazy(() => retryLazy(() => import('@/pages/sales/Detail')));
+const Settings = lazy(() => retryLazy(() => import('@/pages/settings')));
+const Reports = lazy(() => retryLazy(() => import('@/pages/Reports')));
+const Search = lazy(() => retryLazy(() => import('@/pages/Search')));
+const NotFound = lazy(() => retryLazy(() => import('@/pages/not-found')));
 
-const Dashboard = retryLazy(() => import('@/pages/Dashboard'));
-const InventoryList = retryLazy(() => import('@/pages/inventory/List'));
-const InventoryForm = retryLazy(() => import('@/pages/inventory/Form'));
-const InventoryDetail = retryLazy(() => import('@/pages/inventory/Detail'));
-const InventoryMovements = retryLazy(() => import('@/pages/inventory/Movements'));
-const ConsumptionList = retryLazy(() => import('@/pages/inventory/consumption/List').then(m => ({ default: m.ConsumptionList })));
-const ConsumptionForm = retryLazy(() => import('@/pages/inventory/consumption/Form').then(m => ({ default: m.ConsumptionForm })));
-const ConsumptionDetail = retryLazy(() => import('@/pages/inventory/consumption/Detail').then(m => ({ default: m.ConsumptionDetail })));
-const ProductionList = retryLazy(() => import('@/pages/inventory/production/List').then(m => ({ default: m.ProductionList })));
-const ProductionForm = retryLazy(() => import('@/pages/inventory/production/Form').then(m => ({ default: m.ProductionForm })));
-const RecipeList = retryLazy(() => import('@/pages/inventory/recipes/List').then(m => ({ default: m.RecipeList })));
-const RecipeForm = retryLazy(() => import('@/pages/inventory/recipes/Form').then(m => ({ default: m.RecipeForm })));
-const LocationsList = retryLazy(() => import('@/pages/locations/List'));
-const LocationDetail = retryLazy(() => import('@/pages/locations/Detail'));
-const MoveStock = retryLazy(() => import('@/pages/locations/MoveStock'));
-const SalesPos = retryLazy(() => import('@/pages/sales/Pos'));
-const SalesList = retryLazy(() => import('@/pages/sales/List'));
-const SaleDetail = retryLazy(() => import('@/pages/sales/Detail'));
-const Settings = retryLazy(() => import('@/pages/settings'));
-const Reports = retryLazy(() => import('@/pages/Reports'));
-const Search = retryLazy(() => import('@/pages/Search'));
-const NotFound = retryLazy(() => import('@/pages/not-found'));
-
-const CustomerList = retryLazy(() => import('@/pages/customers/List'));
-const CustomerDetail = retryLazy(() => import('@/pages/customers/Detail'));
-const SupplierList = retryLazy(() => import('@/pages/suppliers/List'));
-const SupplierDetail = retryLazy(() => import('@/pages/suppliers/Detail'));
-const SupplierForm = retryLazy(() => import('@/pages/suppliers/Form'));
-const ExpenseList = retryLazy(() => import('@/pages/expenses/List'));
-const ExpenseForm = retryLazy(() => import('@/pages/expenses/Form'));
-const ExpenseDetail = retryLazy(() => import('@/pages/expenses/Detail'));
-const PurchaseList = retryLazy(() => import('@/pages/purchases/List'));
-const PurchaseForm = retryLazy(() => import('@/pages/purchases/Form'));
-const PurchaseDetail = retryLazy(() => import('@/pages/purchases/Detail'));
-const DispositionList = retryLazy(() => import('@/pages/dispositions/List'));
-const DispositionDetail = retryLazy(() => import('@/pages/dispositions/Detail'));
-const CreditList = retryLazy(() => import('@/pages/credit/List'));
-const CreditForm = retryLazy(() => import('@/pages/credit/Form'));
-const CreditDetail = retryLazy(() => import('@/pages/credit/Detail'));
-const PayablesList = retryLazy(() => import('@/pages/payables/List'));
-const PayableDetail = retryLazy(() => import('@/pages/payables/Detail'));
-const CashBookList = retryLazy(() => import('@/pages/cash-book/List'));
-const CashBookForm = retryLazy(() => import('@/pages/cash-book/Form'));
-const DaybookList = retryLazy(() => import('@/pages/daybook/List'));
-const AccountsList = retryLazy(() => import('@/pages/accounts/List'));
-const MoreHub = retryLazy(() => import('@/pages/MoreHub'));
-const HotelGrid = retryLazy(() => import('@/pages/hotel/Grid'));
-const HotelRoomForm = retryLazy(() => import('@/pages/hotel/RoomForm'));
-const HotelBillingList = retryLazy(() => import('@/pages/hotel/BillingList'));
-const HotelBillingForm = retryLazy(() => import('@/pages/hotel/BillingForm'));
-const RestaurantBillingList = retryLazy(() => import('@/pages/restaurant/BillingList'));
-const RestaurantBillingForm = retryLazy(() => import('@/pages/restaurant/BillingForm'));
+const CustomerList = lazy(() => retryLazy(() => import('@/pages/customers/List')));
+const CustomerDetail = lazy(() => retryLazy(() => import('@/pages/customers/Detail')));
+const SupplierList = lazy(() => retryLazy(() => import('@/pages/suppliers/List')));
+const SupplierDetail = lazy(() => retryLazy(() => import('@/pages/suppliers/Detail')));
+const SupplierForm = lazy(() => retryLazy(() => import('@/pages/suppliers/Form')));
+const ExpenseList = lazy(() => retryLazy(() => import('@/pages/expenses/List')));
+const ExpenseForm = lazy(() => retryLazy(() => import('@/pages/expenses/Form')));
+const ExpenseDetail = lazy(() => retryLazy(() => import('@/pages/expenses/Detail')));
+const PurchaseList = lazy(() => retryLazy(() => import('@/pages/purchases/List')));
+const PurchaseForm = lazy(() => retryLazy(() => import('@/pages/purchases/Form')));
+const PurchaseDetail = lazy(() => retryLazy(() => import('@/pages/purchases/Detail')));
+const DispositionList = lazy(() => retryLazy(() => import('@/pages/dispositions/List')));
+const DispositionDetail = lazy(() => retryLazy(() => import('@/pages/dispositions/Detail')));
+const CreditList = lazy(() => retryLazy(() => import('@/pages/credit/List')));
+const CreditForm = lazy(() => retryLazy(() => import('@/pages/credit/Form')));
+const CreditDetail = lazy(() => retryLazy(() => import('@/pages/credit/Detail')));
+const PayablesList = lazy(() => retryLazy(() => import('@/pages/payables/List')));
+const PayableDetail = lazy(() => retryLazy(() => import('@/pages/payables/Detail')));
+const CashBookList = lazy(() => retryLazy(() => import('@/pages/cash-book/List')));
+const CashBookForm = lazy(() => retryLazy(() => import('@/pages/cash-book/Form')));
+const DaybookList = lazy(() => retryLazy(() => import('@/pages/daybook/List')));
+const AccountsList = lazy(() => retryLazy(() => import('@/pages/accounts/List')));
+const MoreHub = lazy(() => retryLazy(() => import('@/pages/MoreHub')));
+const HotelGrid = lazy(() => retryLazy(() => import('@/pages/hotel/Grid')));
+const HotelRoomForm = lazy(() => retryLazy(() => import('@/pages/hotel/RoomForm')));
+const HotelBillingList = lazy(() => retryLazy(() => import('@/pages/hotel/BillingList')));
+const HotelBillingForm = lazy(() => retryLazy(() => import('@/pages/hotel/BillingForm')));
+const RestaurantBillingList = lazy(() => retryLazy(() => import('@/pages/restaurant/BillingList')));
+const RestaurantBillingForm = lazy(() => retryLazy(() => import('@/pages/restaurant/BillingForm')));
 
 import { LicenseProvider } from '@/license/LicenseContext';
 import { ConfirmProvider } from './contexts/ConfirmContext';
@@ -225,10 +201,6 @@ function Router() {
 }
 
 function App() {
-  useEffect(() => {
-    markAppBooted();
-  }, []);
-
   // Show splash only on first install. After chunks are cached, skip it entirely.
   const [splashDone, setSplashDone] = useState(() => {
     try {

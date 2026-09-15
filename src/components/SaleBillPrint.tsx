@@ -350,10 +350,10 @@ export function SaleBillPrint({
                       <td className="text-right font-bold">{fmt(change)}</td>
                     </tr>
                   )}
-                  {sale.dueAmount > 0 && (
+                  {(sale.dueAmount ?? 0) > 0 && (
                     <tr className="text-red-600 font-bold">
                       <td>Due Balance</td>
-                      <td className="text-right">{fmt(sale.dueAmount)}</td>
+                      <td className="text-right">{fmt(sale.dueAmount ?? 0)}</td>
                     </tr>
                   )}
                 </tbody>

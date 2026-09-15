@@ -1,7 +1,8 @@
 import { createRoot } from 'react-dom/client';
 import App from './App';
 import './index.css';
-import { isStaleChunkError, reloadOnceForUpdate } from './lib/updateRecovery';
+import { isStaleChunkError, autoRecoverFromStaleChunk } from './lib/updateRecovery';
+import { initPwa } from './lib/pwa';
 
 // Global error handler to catch any boot or runtime crashes (e.g. chunk loading errors)
 // and prevent showing a blank screen.
@@ -66,16 +67,29 @@ function showGlobalErrorOverlay(message: string) {
   }
 }
 
+// Standard Vite preload error listener to catch chunk load failures early
+window.addEventListener('vite:preloadError', (event) => {
+  event.preventDefault();
+  console.warn('[Vite Preload Error] Caught dynamic preload failure');
+  autoRecoverFromStaleChunk('vite:preloadError');
+});
+
 window.addEventListener('error', (event) => {
   console.error('[Global Error Listener] Caught error:', event.error || event.message);
-  if (isStaleChunkError(event.error || event.message) && reloadOnceForUpdate()) return;
+  if (isStaleChunkError(event.error || event.message)) {
+    if (autoRecoverFromStaleChunk('window:error')) return;
+  }
 });
 
 window.addEventListener('unhandledrejection', (event) => {
   console.error('[Global Promise rejection] Caught error:', event.reason);
-  if (isStaleChunkError(event.reason) && reloadOnceForUpdate()) {
+  if (isStaleChunkError(event.reason)) {
     event.preventDefault();
+    autoRecoverFromStaleChunk('window:unhandledrejection');
   }
 });
+
+// Initialize environment-aware PWA (Web service worker or native cleanup)
+initPwa();
 
 createRoot(document.getElementById('root')!).render(<App />);

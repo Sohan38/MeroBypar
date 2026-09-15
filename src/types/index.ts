@@ -407,6 +407,7 @@ export interface SaleInvoice extends StorageRecord {
   tax: number;
   grandTotal: number;
   paidAmount: number;
+  dueAmount?: number;
   paymentMethod: PaymentMethod;
   splitPayments?: { method: PaymentMethod; amount: number }[];
   notes: string;

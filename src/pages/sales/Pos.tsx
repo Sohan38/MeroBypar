@@ -12,7 +12,8 @@ import { Search, ShoppingCart, ArrowLeft, X, ChevronUp, Package } from 'lucide-r
 import { toast } from 'sonner';
 import { PaymentMethod, ProductBatch, SaleInvoice } from '@/types';
 import { BarcodeScanner } from '@/components/BarcodeScanner';
-const SaleBillPrint = lazy(() => import('@/components/SaleBillPrint').then(m => ({ default: m.SaleBillPrint })));
+import { retryLazy } from '@/lib/updateRecovery';
+const SaleBillPrint = lazy(() => retryLazy(() => import('@/components/SaleBillPrint').then(m => ({ default: m.SaleBillPrint }))));
 
 import { useFeature } from '@/hooks/useFeature';
 import { ProductCard } from '@/components/pos/ProductCard';

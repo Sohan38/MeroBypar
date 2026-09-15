@@ -134,8 +134,8 @@ export function generateReceiptHTML(
       ? `<tr class="highlight-row"><td class="lbl">Change</td><td class="val">${fmt(change)}</td></tr>`
       : '';
   const dueRow =
-    sale.dueAmount > 0
-      ? `<tr class="highlight-row"><td class="lbl">Due Balance</td><td class="val">${fmt(sale.dueAmount)}</td></tr>`
+    (sale.dueAmount ?? 0) > 0
+      ? `<tr class="highlight-row"><td class="lbl">Due Balance</td><td class="val">${fmt(sale.dueAmount ?? 0)}</td></tr>`
       : '';
 
   // ── Full document ────────────────────────────────────────────────────────

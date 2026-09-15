@@ -1,4 +1,5 @@
 import React from 'react';
+import { isStaleChunkError, autoRecoverFromStaleChunk } from '@/lib/updateRecovery';
 
 interface Props {
   children: React.ReactNode;
@@ -10,26 +11,48 @@ interface State {
   error: Error | null;
   errorInfo: string;
   isReloading: boolean;
+  isRecoveringChunk: boolean;
 }
 
 export class ErrorBoundary extends React.Component<Props, State> {
   constructor(props: Props) {
     super(props);
-    this.state = { hasError: false, error: null, errorInfo: '', isReloading: false };
+    this.state = {
+      hasError: false,
+      error: null,
+      errorInfo: '',
+      isReloading: false,
+      isRecoveringChunk: false,
+    };
   }
 
   static getDerivedStateFromError(error: Error): Partial<State> {
-    return { hasError: true, error };
+    if (isStaleChunkError(error)) {
+      const initiated = autoRecoverFromStaleChunk('ErrorBoundary');
+      if (initiated) {
+        return { hasError: true, error, isRecoveringChunk: true };
+      }
+    }
+    return { hasError: true, error, isRecoveringChunk: false };
   }
 
   componentDidCatch(error: Error, info: React.ErrorInfo) {
-    // Log for debugging — visible in Android logcat / Chrome DevTools
+    if (isStaleChunkError(error)) {
+      if (!this.state.isRecoveringChunk) {
+        const initiated = autoRecoverFromStaleChunk('ErrorBoundary');
+        if (initiated) {
+          this.setState({ isRecoveringChunk: true });
+          return;
+        }
+      }
+    }
+    // Log non-chunk errors for debugging — visible in Android logcat / Chrome DevTools
     console.error('[ErrorBoundary] Caught error:', error, info.componentStack);
     this.setState({ errorInfo: info.componentStack || '' });
   }
 
   handleRetry = () => {
-    this.setState({ hasError: false, error: null, errorInfo: '', isReloading: false });
+    this.setState({ hasError: false, error: null, errorInfo: '', isReloading: false, isRecoveringChunk: false });
   };
 
   handleReload = () => {
@@ -45,6 +68,22 @@ export class ErrorBoundary extends React.Component<Props, State> {
         return this.props.fallback;
       }
 
+      // Quiet recovery UI for stale chunk errors while reload takes place
+      if (this.state.isRecoveringChunk) {
+        return (
+          <div className="fixed inset-0 z-9999 w-screen h-screen flex flex-col items-center justify-center bg-background p-4 animate-in fade-in duration-200">
+            <div className="flex flex-col items-center space-y-4 text-center">
+              <div className="h-10 w-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+              <div className="space-y-1">
+                <p className="text-base font-semibold text-foreground">Updating MeroByapar...</p>
+                <p className="text-xs text-muted-foreground">Loading fresh application assets</p>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // Standard error boundary UI for actual application / runtime crashes
       return (
         <div className="fixed inset-0 z-9999 w-screen h-screen flex items-center justify-center p-4 bg-background">
           <div className="w-full max-w-md p-6 md:p-8 rounded-2xl border bg-card text-card-foreground shadow-2xl flex flex-col items-center text-center space-y-6 animate-in fade-in duration-300">
@@ -88,3 +127,4 @@ export class ErrorBoundary extends React.Component<Props, State> {
     return this.props.children;
   }
 }
+

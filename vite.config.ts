@@ -15,6 +15,7 @@ export default defineConfig(({ mode }) => {
       tailwindcss(),
       ...(mode !== 'electron' ? [
         VitePWA({
+          injectRegister: null,
           registerType: 'autoUpdate',
           manifest: {
             name: 'Sohan Manager',

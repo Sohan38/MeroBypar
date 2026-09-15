@@ -51,9 +51,10 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
 import type { SaleInvoice, PaymentMethod } from '@/types';
+import { retryLazy } from '@/lib/updateRecovery';
 
 const SaleBillPrint = lazy(() =>
-  import('@/components/SaleBillPrint').then(m => ({ default: m.SaleBillPrint }))
+  retryLazy(() => import('@/components/SaleBillPrint').then(m => ({ default: m.SaleBillPrint })))
 );
 
 // ─── Constants ────────────────────────────────────────────────────────────────
