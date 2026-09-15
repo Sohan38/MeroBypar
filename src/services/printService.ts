@@ -25,13 +25,19 @@ export type PrintPlatform = 'web' | 'mobile' | 'desktop';
  */
 export function getPrintPlatform(): PrintPlatform {
     try {
+        // Electron check MUST come before Capacitor: @capacitor/core is bundled
+        // in the Electron build too, so `window.Capacitor` exists but
+        // `isNativePlatform()` returns false — which would incorrectly return 'web'
+        // and skip the electronAPI bridge entirely.
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        if (typeof (window as any).electronAPI?.printHTML === 'function') return 'desktop';
+
         // Capacitor sets this global before React hydrates.
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const cap = (window as any).Capacitor;
         if (cap && typeof cap.isNativePlatform === 'function') {
             return cap.isNativePlatform() ? 'mobile' : 'web';
         }
-        if (typeof (window as any).electronAPI?.printHTML === 'function') return 'desktop';
     } catch {
         // Not in a browser context at all (e.g. Jest) — treat as web.
     }
@@ -47,6 +53,8 @@ export function isNativeMobile(): boolean {
 
 export interface PrintOptions {
     title?: string;
+    silent?: boolean;
+    deviceName?: string;
 }
 
 /**
@@ -66,7 +74,7 @@ export function printHTMLDocument(
         return printViaAndroidManager(html, options.title);
     }
     if (platform === 'desktop') {
-        return printViaDesktopBridge(html, options.title);
+        return printViaDesktopBridge(html, options);
     }
     return printViaPopup(html, options.title);
 }
@@ -85,13 +93,13 @@ async function printViaAndroidManager(html: string, title = 'Receipt'): Promise<
     }
 }
 
-async function printViaDesktopBridge(html: string, title = 'Receipt'): Promise<void> {
+async function printViaDesktopBridge(html: string, options: PrintOptions = {}): Promise<void> {
     const bridge = (window as any).electronAPI;
     if (typeof bridge?.printHTML === 'function') {
-        await bridge.printHTML(html, title);
+        await bridge.printHTML(html, options);
         return;
     }
-    return printViaPopup(html, title);
+    return printViaPopup(html, options.title);
 }
 
 // ─── Web strategy: popup window ───────────────────────────────────────────────
