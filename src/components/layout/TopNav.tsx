@@ -1,5 +1,5 @@
 import { useLocation } from 'wouter';
-import { Search, ArrowLeft, Sun, Moon, Laptop, Settings } from 'lucide-react';
+import { Search, ArrowLeft, Sun, Moon, Laptop, Settings, Sparkles } from 'lucide-react';
 import { useApp } from '@/contexts/AppContext';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
@@ -127,6 +127,14 @@ export function TopNav() {
                   </p>
                 </div>
               </div>
+
+              <DropdownMenuItem
+                onClick={() => setLocation('/landing')}
+                className="rounded-xl text-xs font-medium cursor-pointer py-2"
+              >
+                <Sparkles className="mr-2 size-4 text-primary" />
+                <span>Product Tour / Website</span>
+              </DropdownMenuItem>
 
               <DropdownMenuItem
                 onClick={() => setLocation('/settings')}

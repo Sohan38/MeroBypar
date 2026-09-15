@@ -1,5 +1,5 @@
 import { Suspense, lazy, useEffect, useState } from 'react';
-import { Route, Switch, Router as WouterRouter } from 'wouter';
+import { Route, Switch, Router as WouterRouter, useLocation } from 'wouter';
 import { useHashLocation } from 'wouter/use-hash-location';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Toaster } from '@/components/ui/toaster';
@@ -15,6 +15,7 @@ import { NavigationProvider } from '@/contexts/NavigationContext';
 import { Shell } from '@/components/layout/Shell';
 import { retryLazy } from '@/lib/updateRecovery';
 
+const LandingPage = lazy(() => retryLazy(() => import('@/pages/landing')));
 const Dashboard = lazy(() => retryLazy(() => import('@/pages/Dashboard')));
 const InventoryList = lazy(() => retryLazy(() => import('@/pages/inventory/List')));
 const InventoryForm = lazy(() => retryLazy(() => import('@/pages/inventory/Form')));
@@ -74,6 +75,22 @@ import { ConfirmProvider } from './contexts/ConfirmContext';
 const queryClient = new QueryClient();
 
 function Router() {
+  const [location] = useLocation();
+  const isLanding = location === '/landing' || location === '/welcome';
+
+  if (isLanding) {
+    return (
+      <ErrorBoundary>
+        <Suspense fallback={<div className="flex min-h-[40vh] items-center justify-center opacity-0 animate-[fadeIn_0.15s_ease-in_0.15s_forwards]"><Spinner className="size-5 text-muted-foreground" /></div>}>
+          <Switch>
+            <Route path="/landing" component={LandingPage} />
+            <Route path="/welcome" component={LandingPage} />
+          </Switch>
+        </Suspense>
+      </ErrorBoundary>
+    );
+  }
+
   return (
     <Shell>
       <ErrorBoundary>
